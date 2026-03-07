@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NotificationController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">NotificationController.java</span></div><h1>NotificationController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.NotificationDTO;
+import com.revature.passwordmanager.dto.response.MessageResponse;
+import com.revature.passwordmanager.service.notification.NotificationService;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import com.revature.passwordmanager.dto.response.UnreadCountResponse;
+
+@RestController
+@RequestMapping(&quot;/api/notifications&quot;)
+<span class="fc" id="L17">@RequiredArgsConstructor</span>
+public class NotificationController {
+
+  private final NotificationService notificationService;
+
+  @GetMapping
+  public ResponseEntity&lt;List&lt;NotificationDTO&gt;&gt; getNotifications() {
+<span class="fc" id="L24">    String username = getCurrentUsername();</span>
+<span class="fc" id="L25">    return ResponseEntity.ok(notificationService.getNotifications(username));</span>
+  }
+
+  @GetMapping(&quot;/unread-count&quot;)
+  public ResponseEntity&lt;UnreadCountResponse&gt; getUnreadCount() {
+<span class="fc" id="L30">    String username = getCurrentUsername();</span>
+<span class="fc" id="L31">    long count = notificationService.getUnreadCount(username);</span>
+<span class="fc" id="L32">    return ResponseEntity.ok(new UnreadCountResponse(count));</span>
+  }
+
+  @PutMapping(&quot;/{id}/read&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; markAsRead(@PathVariable Long id) {
+<span class="fc" id="L37">    String username = getCurrentUsername();</span>
+<span class="fc" id="L38">    notificationService.markAsRead(username, id);</span>
+<span class="fc" id="L39">    return ResponseEntity.ok(new MessageResponse(&quot;Notification marked as read&quot;));</span>
+  }
+
+  @PutMapping(&quot;/mark-all-read&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; markAllAsRead() {
+<span class="fc" id="L44">    String username = getCurrentUsername();</span>
+<span class="fc" id="L45">    notificationService.markAllAsRead(username);</span>
+<span class="fc" id="L46">    return ResponseEntity.ok(new MessageResponse(&quot;All notifications marked as read&quot;));</span>
+  }
+
+  @DeleteMapping(&quot;/{id}&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; deleteNotification(@PathVariable Long id) {
+<span class="fc" id="L51">    String username = getCurrentUsername();</span>
+<span class="fc" id="L52">    notificationService.deleteNotification(username, id);</span>
+<span class="fc" id="L53">    return ResponseEntity.ok(new MessageResponse(&quot;Notification deleted&quot;));</span>
+  }
+
+  private String getCurrentUsername() {
+<span class="fc" id="L57">    return SecurityContextHolder.getContext().getAuthentication().getName();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

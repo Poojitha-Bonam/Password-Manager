@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecureShareService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.sharing</a> &gt; <span class="el_source">SecureShareService.java</span></div><h1>SecureShareService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.sharing;
+
+import com.revature.passwordmanager.dto.request.CreateShareRequest;
+import com.revature.passwordmanager.dto.response.ShareLinkResponse;
+import com.revature.passwordmanager.dto.response.SharedPasswordResponse;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.sharing.SecureShare;
+import com.revature.passwordmanager.model.sharing.SharePermission;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.model.notification.Notification.NotificationType;
+import com.revature.passwordmanager.model.security.AuditLog.AuditAction;
+import com.revature.passwordmanager.repository.SecureShareRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import com.revature.passwordmanager.service.email.EmailService;
+import com.revature.passwordmanager.service.notification.NotificationService;
+import com.revature.passwordmanager.service.security.AuditLogService;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import com.revature.passwordmanager.service.sharing.ShareEncryptionService.ShareEncryptionResult;
+import com.revature.passwordmanager.util.EncryptionUtil;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.crypto.SecretKey;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+<span class="fc" id="L34">@RequiredArgsConstructor</span>
+public class SecureShareService {
+
+<span class="fc" id="L37">    private static final Logger logger = LoggerFactory.getLogger(SecureShareService.class);</span>
+
+    private final SecureShareRepository shareRepository;
+    private final UserRepository userRepository;
+    private final VaultEntryRepository vaultEntryRepository;
+    private final EncryptionService encryptionService;
+    private final EncryptionUtil encryptionUtil;
+    private final ShareTokenGenerator tokenGenerator;
+    private final ShareEncryptionService shareEncryptionService;
+    private final EmailService emailService;
+    private final NotificationService notificationService;
+    private final AuditLogService auditLogService;
+
+    // ── create ────────────────────────────────────────────────────────────────
+
+    /**
+     * Creates a new secure share for a vault entry.
+     * Re-encrypts the vault password with a one-time AES key and returns the key
+     * to the caller (it must be embedded in the share URL fragment).
+     */
+    @Transactional
+    public ShareLinkResponse createShare(String username, CreateShareRequest request) {
+<span class="fc" id="L59">        User owner = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L60">        VaultEntry entry = vaultEntryRepository.findByIdAndUserId(</span>
+<span class="fc" id="L61">                request.getVaultEntryId(), owner.getId())</span>
+<span class="fc" id="L62">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+
+        // Gap 14 fix: block sharing of highly sensitive entries
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (Boolean.TRUE.equals(entry.getIsHighlySensitive())) {</span>
+<span class="nc" id="L66">            throw new IllegalArgumentException(</span>
+<span class="nc" id="L67">                    &quot;Entry '&quot; + entry.getTitle() + &quot;' is marked as highly sensitive and cannot be shared.&quot;);</span>
+        }
+
+        // Decrypt the vault password
+<span class="fc" id="L71">        SecretKey vaultKey = encryptionUtil.deriveKey(</span>
+<span class="fc" id="L72">                owner.getMasterPasswordHash(), owner.getSalt());</span>
+<span class="fc" id="L73">        String plainPassword = encryptionService.decrypt(entry.getPassword(), vaultKey);</span>
+
+        // Re-encrypt with a fresh one-time key
+<span class="fc" id="L76">        ShareEncryptionResult encrypted = shareEncryptionService.encrypt(plainPassword);</span>
+
+        SharePermission permission;
+        try {
+<span class="fc" id="L80">            permission = SharePermission.valueOf(</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                    request.getPermission() != null ? request.getPermission() : &quot;VIEW_ONCE&quot;);</span>
+<span class="fc" id="L82">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L83">            permission = SharePermission.VIEW_ONCE;</span>
+<span class="fc" id="L84">        }</span>
+
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        int maxViews = permission == SharePermission.TEMPORARY_ACCESS</span>
+<span class="fc" id="L87">                ? Integer.MAX_VALUE</span>
+<span class="fc" id="L88">                : Math.max(1, request.getMaxViews());</span>
+
+<span class="fc" id="L90">        SecureShare share = SecureShare.builder()</span>
+<span class="fc" id="L91">                .vaultEntry(entry)</span>
+<span class="fc" id="L92">                .owner(owner)</span>
+<span class="fc" id="L93">                .recipientEmail(request.getRecipientEmail())</span>
+<span class="fc" id="L94">                .shareToken(tokenGenerator.generate())</span>
+<span class="fc" id="L95">                .encryptedPassword(encrypted.getEncryptedData())</span>
+<span class="fc" id="L96">                .encryptionIv(encrypted.getIv())</span>
+<span class="fc" id="L97">                .expiresAt(LocalDateTime.now().plusHours(</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                        request.getExpiryHours() &gt; 0 ? request.getExpiryHours() : 24))</span>
+<span class="fc" id="L99">                .maxViews(maxViews)</span>
+<span class="fc" id="L100">                .permission(permission)</span>
+<span class="fc" id="L101">                .build();</span>
+
+<span class="fc" id="L103">        share = shareRepository.save(share);</span>
+<span class="fc" id="L104">        logger.info(&quot;Secure share created: id={} token={} entry={} owner={}&quot;,</span>
+<span class="fc" id="L105">                share.getId(), share.getShareToken(), entry.getId(), username);</span>
+
+        // Gap 9 fix: email recipient if one was specified
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">        if (request.getRecipientEmail() != null &amp;&amp; !request.getRecipientEmail().isBlank()) {</span>
+<span class="fc" id="L109">            String shareUrl = &quot;/api/shares/&quot; + share.getShareToken()</span>
+<span class="fc" id="L110">                    + &quot;#&quot; + encrypted.getKeyBase64();</span>
+<span class="fc" id="L111">            String expiresAt = share.getExpiresAt().toString();</span>
+<span class="fc" id="L112">            emailService.sendShareNotificationEmail(</span>
+<span class="fc" id="L113">                    request.getRecipientEmail(), username, shareUrl, expiresAt);</span>
+
+            // Gap 10 fix: in-app notification for recipient if they are a registered user.
+            // Use a final copy of username for lambda capture.
+<span class="fc" id="L117">            final String senderUsername = username;</span>
+<span class="fc" id="L118">            final SecureShare savedShare = share;</span>
+<span class="fc" id="L119">            userRepository.findByEmail(request.getRecipientEmail()).ifPresent(recipient -&gt;</span>
+<span class="nc" id="L120">                notificationService.createNotification(</span>
+<span class="nc" id="L121">                        recipient.getUsername(),</span>
+                        NotificationType.ACCOUNT_ACTIVITY,
+                        &quot;Secure Password Shared With You&quot;,
+                        senderUsername + &quot; has shared a secure password link with you. &quot; +
+<span class="nc" id="L125">                        &quot;Check your email to access it. It expires at &quot; + savedShare.getExpiresAt() + &quot;.&quot;));</span>
+        }
+
+        // Gap 8 (share audit): log share creation
+<span class="fc" id="L129">        auditLogService.logAction(username, AuditAction.SHARE_CREATED,</span>
+<span class="fc" id="L130">                &quot;Shared entry '&quot; + entry.getTitle() + &quot;' token=&quot; + share.getShareToken());</span>
+
+<span class="fc" id="L132">        return toShareLinkResponse(share, encrypted.getKeyBase64());</span>
+    }
+
+    // ── retrieve (public) ─────────────────────────────────────────────────────
+
+    /**
+     * Retrieves a shared password by its token. Increments view count.
+     * Does NOT decrypt — returns the ciphertext + IV for client-side decryption.
+     */
+    @Transactional
+    public SharedPasswordResponse getSharedPassword(String token) {
+<span class="fc" id="L143">        SecureShare share = shareRepository.findByShareToken(token)</span>
+<span class="fc" id="L144">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Share not found or has expired&quot;));</span>
+
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (!share.isValid()) {</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            String reason = share.isRevoked() ? &quot;revoked&quot;</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                    : share.getViewCount() &gt;= share.getMaxViews() ? &quot;view limit reached&quot;</span>
+<span class="fc" id="L149">                    : &quot;expired&quot;;</span>
+<span class="fc" id="L150">            throw new IllegalStateException(&quot;Share is no longer valid: &quot; + reason);</span>
+        }
+
+<span class="fc" id="L153">        share.setViewCount(share.getViewCount() + 1);</span>
+<span class="fc" id="L154">        shareRepository.save(share);</span>
+
+<span class="fc" id="L156">        VaultEntry entry = share.getVaultEntry();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        int remaining = share.getPermission() == SharePermission.TEMPORARY_ACCESS</span>
+<span class="fc" id="L158">                ? Integer.MAX_VALUE</span>
+<span class="fc" id="L159">                : share.getMaxViews() - share.getViewCount();</span>
+
+        // Gap 13 fix (CRITICAL): VaultEntry.username is stored encrypted — decrypt it
+        // before returning. If decryption fails, fall back to null gracefully.
+<span class="fc" id="L163">        String plainUsername = null;</span>
+        try {
+<span class="fc" id="L165">            User owner = share.getOwner();</span>
+<span class="fc" id="L166">            SecretKey vaultKey = encryptionUtil.deriveKey(</span>
+<span class="fc" id="L167">                    owner.getMasterPasswordHash(), owner.getSalt());</span>
+<span class="fc" id="L168">            plainUsername = encryptionService.decrypt(entry.getUsername(), vaultKey);</span>
+<span class="nc" id="L169">        } catch (Exception e) {</span>
+<span class="nc" id="L170">            logger.warn(&quot;Could not decrypt username for shared entry {}: {}&quot;, entry.getId(), e.getMessage());</span>
+<span class="fc" id="L171">        }</span>
+
+        // Audit log the share access
+<span class="fc" id="L174">        auditLogService.logAction(share.getOwner().getUsername(), AuditAction.SHARE_ACCESSED,</span>
+<span class="fc" id="L175">                &quot;Share accessed: token=&quot; + share.getShareToken() + &quot; viewCount=&quot; + share.getViewCount());</span>
+
+<span class="fc" id="L177">        return SharedPasswordResponse.builder()</span>
+<span class="fc" id="L178">                .title(entry.getTitle())</span>
+<span class="fc" id="L179">                .username(plainUsername)</span>
+<span class="fc" id="L180">                .encryptedPassword(share.getEncryptedPassword())</span>
+<span class="fc" id="L181">                .encryptionIv(share.getEncryptionIv())</span>
+<span class="fc" id="L182">                .websiteUrl(entry.getWebsiteUrl())</span>
+<span class="fc" id="L183">                .permission(share.getPermission().name())</span>
+<span class="fc" id="L184">                .viewsRemaining(remaining)</span>
+<span class="fc" id="L185">                .expiresAt(share.getExpiresAt())</span>
+<span class="fc" id="L186">                .sharedBy(share.getOwner().getUsername())</span>
+<span class="fc" id="L187">                .build();</span>
+    }
+
+    // ── list active shares (owner) ────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List&lt;ShareLinkResponse&gt; getActiveShares(String username) {
+<span class="fc" id="L194">        User owner = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L195">        return shareRepository.findActiveSharesByOwnerId(owner.getId(), LocalDateTime.now())</span>
+<span class="fc" id="L196">                .stream()</span>
+<span class="fc" id="L197">                .map(s -&gt; toShareLinkResponse(s, null)) // key not returned on list</span>
+<span class="fc" id="L198">                .collect(Collectors.toList());</span>
+    }
+
+    // ── revoke ────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public ShareLinkResponse revokeShare(String username, Long shareId) {
+<span class="fc" id="L205">        User owner = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L206">        SecureShare share = shareRepository.findById(shareId)</span>
+<span class="fc" id="L207">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Share not found&quot;));</span>
+
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        if (!share.getOwner().getId().equals(owner.getId())) {</span>
+<span class="fc" id="L210">            throw new IllegalArgumentException(&quot;Share does not belong to this user&quot;);</span>
+        }
+
+<span class="fc" id="L213">        share.setRevoked(true);</span>
+<span class="fc" id="L214">        shareRepository.save(share);</span>
+<span class="fc" id="L215">        auditLogService.logAction(username, AuditAction.SHARE_REVOKED,</span>
+<span class="fc" id="L216">                &quot;Share revoked: id=&quot; + shareId + &quot; entry='&quot; + share.getVaultEntry().getTitle() + &quot;'&quot;);</span>
+<span class="fc" id="L217">        logger.info(&quot;Share revoked: id={} by user={}&quot;, shareId, username);</span>
+<span class="fc" id="L218">        return toShareLinkResponse(share, null);</span>
+    }
+
+    // ── received shares ───────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List&lt;ShareLinkResponse&gt; getReceivedShares(String username) {
+<span class="fc" id="L225">        User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if (user.getEmail() == null) return List.of();</span>
+<span class="fc" id="L227">        return shareRepository.findActiveSharesForRecipient(user.getEmail(), LocalDateTime.now())</span>
+<span class="fc" id="L228">                .stream()</span>
+<span class="fc" id="L229">                .map(s -&gt; toShareLinkResponse(s, null))</span>
+<span class="fc" id="L230">                .collect(Collectors.toList());</span>
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private ShareLinkResponse toShareLinkResponse(SecureShare share, String encryptionKey) {
+<span class="fc" id="L236">        return ShareLinkResponse.builder()</span>
+<span class="fc" id="L237">                .shareId(share.getId())</span>
+<span class="fc" id="L238">                .shareToken(share.getShareToken())</span>
+<span class="fc" id="L239">                .shareUrl(&quot;/api/shares/&quot; + share.getShareToken())</span>
+<span class="fc" id="L240">                .encryptionKey(encryptionKey)</span>
+<span class="fc" id="L241">                .vaultEntryTitle(share.getVaultEntry().getTitle())</span>
+<span class="fc" id="L242">                .recipientEmail(share.getRecipientEmail())</span>
+<span class="fc" id="L243">                .permission(share.getPermission().name())</span>
+<span class="fc" id="L244">                .maxViews(share.getMaxViews())</span>
+<span class="fc" id="L245">                .viewCount(share.getViewCount())</span>
+<span class="fc" id="L246">                .expiresAt(share.getExpiresAt())</span>
+<span class="fc" id="L247">                .createdAt(share.getCreatedAt())</span>
+<span class="fc" id="L248">                .revoked(share.isRevoked())</span>
+<span class="fc" id="L249">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

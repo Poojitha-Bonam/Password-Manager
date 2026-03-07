@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">AuthController.java</span></div><h1>AuthController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.SecurityQuestionDTO;
+import com.revature.passwordmanager.dto.request.LoginRequest;
+import com.revature.passwordmanager.dto.request.RecoveryRequest;
+import com.revature.passwordmanager.dto.request.RefreshTokenRequest;
+import com.revature.passwordmanager.dto.request.RegistrationRequest;
+import com.revature.passwordmanager.dto.request.ForgotPasswordRequest;
+import com.revature.passwordmanager.dto.request.VerifySecurityQuestionsRequest;
+import com.revature.passwordmanager.dto.request.VerifyCaptchaRequest;
+import com.revature.passwordmanager.dto.request.VerifyMasterPasswordRequest;
+import com.revature.passwordmanager.dto.response.AuthResponse;
+import com.revature.passwordmanager.dto.response.MessageResponse;
+import com.revature.passwordmanager.dto.response.UserResponse;
+import com.revature.passwordmanager.dto.response.TokenValidationResponse;
+import com.revature.passwordmanager.dto.response.PasswordHintResponse;
+import com.revature.passwordmanager.dto.request.SetDuressPasswordRequest;
+import com.revature.passwordmanager.dto.request.SetPasswordHintRequest;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.service.auth.AccountRecoveryService;
+import com.revature.passwordmanager.service.auth.AuthenticationService;
+import com.revature.passwordmanager.service.auth.RegistrationService;
+import com.revature.passwordmanager.service.security.CaptchaService;
+import com.revature.passwordmanager.service.security.DuressService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+@RestController
+@RequestMapping(&quot;/api/auth&quot;)
+<span class="fc" id="L43">@RequiredArgsConstructor</span>
+@Tag(name = &quot;Authentication&quot;, description = &quot;Endpoints for login, registration, and session management&quot;)
+public class AuthController {
+
+  private final RegistrationService registrationService;
+  private final AuthenticationService authenticationService;
+  private final AccountRecoveryService accountRecoveryService;
+  private final DuressService duressService;
+  private final CaptchaService captchaService;
+  private final UserRepository userRepository;
+  private final PasswordEncoder passwordEncoder;
+
+  @Operation(summary = &quot;Register a new user account&quot;)
+  @PostMapping(&quot;/register&quot;)
+  public ResponseEntity&lt;UserResponse&gt; register(@Valid @RequestBody RegistrationRequest request) {
+<span class="fc" id="L58">    UserResponse response = registrationService.registerUser(request);</span>
+<span class="fc" id="L59">    return new ResponseEntity&lt;&gt;(response, HttpStatus.CREATED);</span>
+  }
+
+  @Operation(summary = &quot;Verify email with OTP code sent during registration&quot;)
+  @PostMapping(value = &quot;/verify-email&quot;, produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity&lt;MessageResponse&gt; verifyEmail(
+      @RequestParam(&quot;username&quot;) String username,
+      @RequestParam(&quot;code&quot;) String code) {
+<span class="fc" id="L67">    registrationService.verifyEmail(username, code);</span>
+<span class="fc" id="L68">    return ResponseEntity.ok(new MessageResponse(&quot;Email verified successfully. You can now log in.&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Resend email verification OTP code&quot;)
+  @PostMapping(value = &quot;/resend-verification-otp&quot;, produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity&lt;MessageResponse&gt; resendVerificationOtp(@RequestParam(&quot;username&quot;) String username) {
+<span class="fc" id="L74">    registrationService.resendVerificationOtp(username);</span>
+<span class="fc" id="L75">    return ResponseEntity.ok(new MessageResponse(&quot;Verification code resent to your email.&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Authenticate user and return JWT token&quot;)
+  @PostMapping(&quot;/login&quot;)
+  public ResponseEntity&lt;AuthResponse&gt; login(@Valid @RequestBody LoginRequest request,
+      HttpServletRequest httpRequest) {
+
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">    if (captchaService.isCaptchaRequired(request.getUsername())) {</span>
+<span class="nc bnc" id="L84" title="All 4 branches missed.">      if (request.getCaptchaToken() == null || request.getCaptchaToken().isBlank()) {</span>
+<span class="nc" id="L85">        return ResponseEntity.badRequest().body(</span>
+<span class="nc" id="L86">            AuthResponse.builder().message(&quot;CAPTCHA verification required&quot;).build());</span>
+      }
+<span class="nc bnc" id="L88" title="All 2 branches missed.">      if (!captchaService.verifyCaptcha(request.getCaptchaToken())) {</span>
+<span class="nc" id="L89">        return ResponseEntity.badRequest().body(</span>
+<span class="nc" id="L90">            AuthResponse.builder().message(&quot;CAPTCHA verification failed&quot;).build());</span>
+      }
+    }
+
+<span class="fc" id="L94">    AuthResponse response = authenticationService.login(request, httpRequest);</span>
+<span class="fc" id="L95">    return ResponseEntity.ok(response);</span>
+  }
+
+  @Operation(summary = &quot;Refresh an expired JWT session token&quot;)
+  @PostMapping(&quot;/refresh-token&quot;)
+  public ResponseEntity&lt;AuthResponse&gt; refreshToken(
+      @Valid @RequestBody RefreshTokenRequest request,
+      HttpServletRequest httpRequest) {
+<span class="fc" id="L103">    AuthResponse response = authenticationService.refreshToken(request, httpRequest);</span>
+<span class="fc" id="L104">    return ResponseEntity.ok(response);</span>
+  }
+
+  @Operation(summary = &quot;Logout user and invalidate token&quot;)
+  @PostMapping(&quot;/logout&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; logout(@RequestHeader(&quot;Authorization&quot;) String authHeader) {
+<span class="fc" id="L110">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L111">    authenticationService.logout(authHeader, username);</span>
+<span class="fc" id="L112">    return ResponseEntity.ok(new MessageResponse(&quot;Logged out successfully&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Get security questions for a given username&quot;)
+  @GetMapping(&quot;/security-questions/{username}&quot;)
+  public ResponseEntity&lt;List&lt;SecurityQuestionDTO&gt;&gt; getSecurityQuestions(
+      @PathVariable String username) {
+<span class="fc" id="L119">    return ResponseEntity.ok(authenticationService.getSecurityQuestions(username));</span>
+  }
+
+  @Operation(summary = &quot;Reset the master password using security questions&quot;)
+  @PostMapping(&quot;/reset-password&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; resetPassword(
+      @Valid @RequestBody RecoveryRequest request) {
+<span class="fc" id="L126">    accountRecoveryService.resetPassword(request);</span>
+<span class="fc" id="L127">    return ResponseEntity.ok(new MessageResponse(&quot;Password changed successfully&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Verify OTP code during 2FA login sequence&quot;)
+  @PostMapping(&quot;/verify-otp&quot;)
+  public ResponseEntity&lt;AuthResponse&gt; verifyOtp(
+      @RequestParam String username,
+      @RequestParam String code,
+      HttpServletRequest httpRequest) {
+<span class="fc" id="L136">    return ResponseEntity.ok(authenticationService.verifyOtp(username, code, httpRequest));</span>
+  }
+
+  @Operation(summary = &quot;Send OTP code to user's email&quot;)
+  @PostMapping(&quot;/send-otp&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; sendOtp(@RequestParam String username) {
+<span class="fc" id="L142">    authenticationService.sendOtp(username);</span>
+<span class="fc" id="L143">    return ResponseEntity.ok(new MessageResponse(&quot;OTP sent to your email.&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Resend OTP code to user's email&quot;)
+  @PostMapping(&quot;/resend-otp&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; resendOtp(@RequestParam String username) {
+<span class="fc" id="L149">    authenticationService.sendOtp(username);</span>
+<span class="fc" id="L150">    return ResponseEntity.ok(new MessageResponse(&quot;OTP resent to your email.&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Initiate account recovery via email link&quot;)
+  @PostMapping(&quot;/forgot-password&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+<span class="fc" id="L156">    accountRecoveryService.forgotPassword(request);</span>
+<span class="fc" id="L157">    return ResponseEntity.ok(new MessageResponse(&quot;If the account exists, password recovery has been initiated.&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Validate security question answers during recovery&quot;)
+  @PostMapping(&quot;/verify-security-questions&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; verifySecurityQuestions(
+      @Valid @RequestBody VerifySecurityQuestionsRequest request) {
+<span class="fc" id="L164">    accountRecoveryService.verifySecurityQuestions(request);</span>
+<span class="fc" id="L165">    return ResponseEntity.ok(new MessageResponse(&quot;Security questions verified successfully&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Verify captcha token&quot;)
+  @PostMapping(&quot;/verify-captcha&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; verifyCaptcha(@Valid @RequestBody VerifyCaptchaRequest request) {
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">    if (!captchaService.verifyCaptcha(request.getCaptchaToken())) {</span>
+<span class="nc" id="L172">      return ResponseEntity.badRequest().body(new MessageResponse(&quot;CAPTCHA verification failed&quot;));</span>
+    }
+<span class="fc" id="L174">    return ResponseEntity.ok(new MessageResponse(&quot;CAPTCHA verified successfully&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Check if current JWT token is active and valid&quot;)
+  @GetMapping(&quot;/validate-token&quot;)
+  public ResponseEntity&lt;TokenValidationResponse&gt; validateToken(@RequestHeader(&quot;Authorization&quot;) String authHeader) {
+<span class="pc bpc" id="L180" title="2 of 4 branches missed.">    if (authHeader != null &amp;&amp; authHeader.startsWith(&quot;Bearer &quot;)) {</span>
+<span class="fc" id="L181">      String token = authHeader.substring(7);</span>
+<span class="fc" id="L182">      boolean isValid = authenticationService.validateToken(token);</span>
+<span class="fc" id="L183">      return ResponseEntity.ok(new TokenValidationResponse(isValid));</span>
+    }
+<span class="nc" id="L185">    return ResponseEntity.badRequest().body(new TokenValidationResponse(false));</span>
+  }
+
+  @Operation(summary = &quot;Re-authenticate master password for sensitive actions&quot;)
+  @PostMapping(&quot;/verify-master-password&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; verifyMasterPassword(@Valid @RequestBody VerifyMasterPasswordRequest request) {
+<span class="fc" id="L191">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L192">    authenticationService.verifyMasterPassword(username, request);</span>
+<span class="fc" id="L193">    return ResponseEntity.ok(new MessageResponse(&quot;Master password verified successfully&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Login using a duress password (wipes local vault data)&quot;)
+  @PostMapping(&quot;/duress-login&quot;)
+  public ResponseEntity&lt;AuthResponse&gt; duressLogin(@Valid @RequestBody LoginRequest request,
+      HttpServletRequest httpRequest) {
+<span class="fc" id="L200">    AuthResponse response = authenticationService.duressLogin(request, httpRequest);</span>
+<span class="fc" id="L201">    return ResponseEntity.ok(response);</span>
+  }
+
+  @Operation(summary = &quot;Configure a duress password for emergency data wiping&quot;)
+  @PostMapping(&quot;/set-duress-password&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; setDuressPassword(@Valid @RequestBody SetDuressPasswordRequest request) {
+<span class="fc" id="L207">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L208">    duressService.setDuressPassword(username, request.getDuressPassword());</span>
+<span class="fc" id="L209">    return ResponseEntity.ok(new MessageResponse(&quot;Duress password set successfully&quot;));</span>
+  }
+
+  @Operation(summary = &quot;Retrieve password hint for given username&quot;)
+  @GetMapping(&quot;/password-hint/{username}&quot;)
+  public ResponseEntity&lt;PasswordHintResponse&gt; getPasswordHint(@PathVariable String username) {
+<span class="fc" id="L215">    User user = userRepository.findByUsername(username)</span>
+<span class="pc" id="L216">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;User not found&quot;));</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">    String hint = user.getPasswordHint() != null ? user.getPasswordHint() : &quot;No hint set&quot;;</span>
+<span class="fc" id="L218">    return ResponseEntity.ok(new PasswordHintResponse(hint));</span>
+  }
+
+  @Operation(summary = &quot;Set or update the password hint&quot;)
+  @PutMapping(value = &quot;/password-hint&quot;, produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity&lt;MessageResponse&gt; setPasswordHint(@Valid @RequestBody SetPasswordHintRequest request) {
+<span class="fc" id="L224">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L225">    User user = userRepository.findByUsername(username)</span>
+<span class="pc" id="L226">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;User not found&quot;));</span>
+
+<span class="fc" id="L228">    String newHint = request.getHint();</span>
+<span class="fc" id="L229">    String masterPassword = request.getMasterPassword();</span>
+
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">    if (!passwordEncoder.matches(masterPassword, user.getMasterPasswordHash())) {</span>
+<span class="nc" id="L232">      return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse(&quot;Invalid master password&quot;));</span>
+    }
+
+<span class="pc bpc" id="L235" title="2 of 4 branches missed.">    if (newHint != null &amp;&amp; !newHint.trim().isEmpty()) {</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">      if (newHint.toLowerCase().contains(masterPassword.toLowerCase())) {</span>
+<span class="fc" id="L237">        return ResponseEntity.badRequest()</span>
+<span class="fc" id="L238">            .body(new MessageResponse(&quot;Password hint cannot contain the master password&quot;));</span>
+      }
+    }
+
+<span class="fc" id="L242">    user.setPasswordHint(newHint);</span>
+<span class="fc" id="L243">    userRepository.save(user);</span>
+<span class="fc" id="L244">    return ResponseEntity.ok(new MessageResponse(&quot;Password hint updated&quot;));</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

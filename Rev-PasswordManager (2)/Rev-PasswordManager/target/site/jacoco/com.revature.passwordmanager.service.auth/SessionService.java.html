@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SessionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.auth</a> &gt; <span class="el_source">SessionService.java</span></div><h1>SessionService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.auth;
+
+import com.revature.passwordmanager.dto.response.SessionResponse;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.user.UserSession;
+import com.revature.passwordmanager.repository.UserSessionRepository;
+import com.revature.passwordmanager.util.ClientIpUtil;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+import com.revature.passwordmanager.repository.UserRepository;
+
+@Service
+<span class="fc" id="L21">@RequiredArgsConstructor</span>
+<span class="fc" id="L22">@Slf4j</span>
+public class SessionService {
+
+  private final UserSessionRepository userSessionRepository;
+  private final UserRepository userRepository;
+  private final ClientIpUtil clientIpUtil;
+
+  @Transactional
+  public void createSession(User user, String token, HttpServletRequest request, String location,
+      String deviceFingerprint) {
+<span class="fc" id="L32">    log.info(&quot;Creating new session for user: {}&quot;, user.getUsername());</span>
+
+<span class="fc" id="L34">    String ipAddress = clientIpUtil.getClientIpAddress(request);</span>
+<span class="fc" id="L35">    String userAgent = request.getHeader(&quot;User-Agent&quot;);</span>
+
+<span class="fc" id="L37">    UserSession session = UserSession.builder()</span>
+<span class="fc" id="L38">        .user(user)</span>
+<span class="fc" id="L39">        .token(token)</span>
+<span class="fc" id="L40">        .ipAddress(ipAddress)</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        .deviceInfo(userAgent != null ? userAgent : &quot;Unknown Device&quot;)</span>
+<span class="fc" id="L42">        .deviceFingerprint(deviceFingerprint)</span>
+<span class="fc" id="L43">        .location(location)</span>
+<span class="fc" id="L44">        .isActive(true)</span>
+<span class="fc" id="L45">        .lastAccessedAt(LocalDateTime.now())</span>
+
+<span class="fc" id="L47">        .expiresAt(LocalDateTime.now().plusDays(7))</span>
+<span class="fc" id="L48">        .build();</span>
+
+<span class="fc" id="L50">    userSessionRepository.save(session);</span>
+<span class="fc" id="L51">    log.info(&quot;Session created successfully for user: {}&quot;, user.getUsername());</span>
+<span class="fc" id="L52">  }</span>
+
+  @Transactional(readOnly = true)
+  public boolean isSessionActive(String token) {
+<span class="fc" id="L56">    return userSessionRepository.findFirstByTokenOrderByIdDesc(token)</span>
+<span class="fc" id="L57">        .map(UserSession::isActive)</span>
+<span class="fc" id="L58">        .orElse(false);</span>
+  }
+
+  @Transactional
+  public void terminateSession(Long sessionId, String username) {
+<span class="fc" id="L63">    log.info(&quot;Terminating session {} for user {}&quot;, sessionId, username);</span>
+<span class="fc" id="L64">    UserSession session = userSessionRepository.findById(sessionId)</span>
+<span class="pc" id="L65">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Session&quot;, &quot;id&quot;, sessionId));</span>
+
+<span class="fc bfc" id="L67" title="All 2 branches covered.">    if (!session.getUser().getUsername().equals(username)) {</span>
+<span class="fc" id="L68">      log.warn(&quot;User {} attempted to terminate session {} belonging to another user&quot;, username, sessionId);</span>
+<span class="fc" id="L69">      throw new ResourceNotFoundException(&quot;Session&quot;, &quot;id&quot;, sessionId);</span>
+    }
+
+<span class="fc" id="L72">    session.setActive(false);</span>
+<span class="fc" id="L73">    userSessionRepository.save(session);</span>
+<span class="fc" id="L74">    log.info(&quot;Session {} terminated successfully&quot;, sessionId);</span>
+<span class="fc" id="L75">  }</span>
+
+  @Transactional
+  public void terminateSessionByToken(String token) {
+<span class="fc" id="L79">    userSessionRepository.findFirstByTokenOrderByIdDesc(token).ifPresent(session -&gt; {</span>
+<span class="fc" id="L80">      session.setActive(false);</span>
+<span class="fc" id="L81">      userSessionRepository.save(session);</span>
+<span class="fc" id="L82">      log.info(&quot;Session terminated by token for user {}&quot;, session.getUser().getUsername());</span>
+<span class="fc" id="L83">    });</span>
+<span class="fc" id="L84">  }</span>
+
+  @Transactional
+  public void terminateAllUserSessions(String username) {
+<span class="fc" id="L88">    log.info(&quot;Terminating all sessions for user {}&quot;, username);</span>
+<span class="fc" id="L89">    User user = userRepository.findByUsername(username)</span>
+<span class="pc" id="L90">        .or(() -&gt; userRepository.findByEmail(username))</span>
+<span class="pc" id="L91">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;User&quot;, &quot;username&quot;, username));</span>
+
+<span class="fc" id="L93">    List&lt;UserSession&gt; activeSessions = userSessionRepository.findByUserIdAndIsActiveTrue(user.getId());</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">    for (UserSession session : activeSessions) {</span>
+<span class="fc" id="L95">      session.setActive(false);</span>
+<span class="fc" id="L96">    }</span>
+<span class="fc" id="L97">    userSessionRepository.saveAll(activeSessions);</span>
+<span class="fc" id="L98">    log.info(&quot;Terminated {} sessions for user {}&quot;, activeSessions.size(), username);</span>
+<span class="fc" id="L99">  }</span>
+
+  @Transactional(readOnly = true)
+  public List&lt;SessionResponse&gt; getUserSessions(String username) {
+<span class="nc" id="L103">    User user = userRepository.findByUsername(username)</span>
+<span class="nc" id="L104">        .or(() -&gt; userRepository.findByEmail(username))</span>
+<span class="nc" id="L105">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;User&quot;, &quot;username&quot;, username));</span>
+
+<span class="nc" id="L107">    return userSessionRepository.findByUserIdAndIsActiveTrue(user.getId()).stream()</span>
+<span class="nc" id="L108">        .map(this::mapToResponse)</span>
+<span class="nc" id="L109">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional(readOnly = true)
+  public SessionResponse getCurrentSession(String token) {
+<span class="fc" id="L114">    return userSessionRepository.findFirstByTokenOrderByIdDesc(token)</span>
+<span class="fc" id="L115">        .map(this::mapToResponse)</span>
+<span class="fc" id="L116">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Session&quot;, &quot;token&quot;, &quot;current&quot;));</span>
+  }
+
+  @Transactional
+  public SessionResponse extendSession(String token) {
+<span class="fc" id="L121">    UserSession session = userSessionRepository.findFirstByTokenOrderByIdDesc(token)</span>
+<span class="fc" id="L122">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Session&quot;, &quot;token&quot;, &quot;current&quot;));</span>
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">    if (!session.isActive()) {</span>
+<span class="fc" id="L125">      throw new com.revature.passwordmanager.exception.AuthenticationException(&quot;Cannot extend an inactive session&quot;);</span>
+    }
+
+<span class="fc" id="L128">    session.setLastAccessedAt(LocalDateTime.now());</span>
+<span class="fc" id="L129">    session.setExpiresAt(LocalDateTime.now().plusDays(7));</span>
+<span class="fc" id="L130">    userSessionRepository.save(session);</span>
+<span class="fc" id="L131">    log.info(&quot;Session extended successfully for user: {}&quot;, session.getUser().getUsername());</span>
+
+<span class="fc" id="L133">    return mapToResponse(session);</span>
+  }
+
+  private SessionResponse mapToResponse(UserSession session) {
+<span class="fc" id="L137">    return SessionResponse.builder()</span>
+<span class="fc" id="L138">        .id(session.getId())</span>
+<span class="fc" id="L139">        .ipAddress(session.getIpAddress())</span>
+<span class="fc" id="L140">        .deviceInfo(session.getDeviceInfo())</span>
+<span class="fc" id="L141">        .location(session.getLocation())</span>
+<span class="fc" id="L142">        .isActive(session.isActive())</span>
+<span class="fc" id="L143">        .createdAt(session.getCreatedAt())</span>
+<span class="fc" id="L144">        .lastAccessedAt(session.getLastAccessedAt())</span>
+<span class="fc" id="L145">        .expiresAt(session.getExpiresAt())</span>
+<span class="fc" id="L146">        .build();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

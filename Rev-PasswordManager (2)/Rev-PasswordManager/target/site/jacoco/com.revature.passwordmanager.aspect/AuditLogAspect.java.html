@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditLogAspect.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.aspect</a> &gt; <span class="el_source">AuditLogAspect.java</span></div><h1>AuditLogAspect.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.aspect;
+
+import com.revature.passwordmanager.model.security.AuditLog.AuditAction;
+import com.revature.passwordmanager.service.security.AuditLogService;
+
+import lombok.RequiredArgsConstructor;
+import org.aspectj.lang.JoinPoint;
+import org.aspectj.lang.annotation.AfterReturning;
+import org.aspectj.lang.annotation.Aspect;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import com.revature.passwordmanager.service.vault.VaultTrashService;
+
+@Aspect
+@Component
+<span class="fc" id="L17">@RequiredArgsConstructor</span>
+public class AuditLogAspect {
+
+<span class="fc" id="L20">  private static final Logger logger = LoggerFactory.getLogger(AuditLogAspect.class);</span>
+  private final AuditLogService auditLogService;
+
+  @AfterReturning(&quot;execution(* com.revature.passwordmanager.service.vault.VaultTrashService.restoreEntry(..))&quot;)
+  public void logRestore(JoinPoint joinPoint) {
+    try {
+<span class="nc" id="L26">      String username = (String) joinPoint.getArgs()[0];</span>
+<span class="nc" id="L27">      Long entryId = (Long) joinPoint.getArgs()[1];</span>
+<span class="nc" id="L28">      auditLogService.logAction(username, AuditAction.ENTRY_RESTORED,</span>
+          &quot;Restored vault entry ID: &quot; + entryId);
+<span class="nc" id="L30">    } catch (Exception e) {</span>
+<span class="nc" id="L31">      logger.error(&quot;Audit aspect error: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L32">    }</span>
+<span class="nc" id="L33">  }</span>
+
+  @AfterReturning(&quot;execution(* com.revature.passwordmanager.service.vault.VaultTrashService.restoreAll(..))&quot;)
+  public void logRestoreAll(JoinPoint joinPoint) {
+    try {
+<span class="nc" id="L38">      String username = (String) joinPoint.getArgs()[0];</span>
+<span class="nc" id="L39">      auditLogService.logAction(username, AuditAction.ENTRY_RESTORED,</span>
+          &quot;Restored all trashed entries&quot;);
+<span class="nc" id="L41">    } catch (Exception e) {</span>
+<span class="nc" id="L42">      logger.error(&quot;Audit aspect error: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L43">    }</span>
+<span class="nc" id="L44">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

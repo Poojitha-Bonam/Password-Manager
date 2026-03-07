@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthenticationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.auth</a> &gt; <span class="el_source">AuthenticationService.java</span></div><h1>AuthenticationService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.auth;
+
+import com.revature.passwordmanager.config.JwtConfig;
+import com.revature.passwordmanager.dto.SecurityQuestionDTO;
+import com.revature.passwordmanager.dto.request.LoginRequest;
+import com.revature.passwordmanager.dto.request.RefreshTokenRequest;
+import com.revature.passwordmanager.dto.request.VerifyMasterPasswordRequest;
+import com.revature.passwordmanager.dto.response.AuthResponse;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.security.JwtTokenProvider;
+import com.revature.passwordmanager.service.email.EmailService;
+import com.revature.passwordmanager.service.security.AuditLogService;
+import com.revature.passwordmanager.service.security.SecurityAlertService;
+import com.revature.passwordmanager.model.security.SecurityAlert.AlertType;
+import com.revature.passwordmanager.model.security.SecurityAlert.Severity;
+import com.revature.passwordmanager.service.security.LoginAttemptService;
+import com.revature.passwordmanager.service.security.AdaptiveAuthService;
+import com.revature.passwordmanager.service.security.DuressService;
+import com.revature.passwordmanager.service.security.GeoLocationService;
+import com.revature.passwordmanager.util.DeviceFingerprintUtil;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import static com.revature.passwordmanager.model.security.AuditLog.AuditAction.LOGIN;
+import static com.revature.passwordmanager.model.security.AuditLog.AuditAction.LOGIN_FAILED;
+import static com.revature.passwordmanager.model.security.AuditLog.AuditAction.LOGOUT;
+
+@Service
+<span class="fc" id="L42">@RequiredArgsConstructor</span>
+public class AuthenticationService {
+
+  private final AuthenticationManager authenticationManager;
+  private final JwtTokenProvider jwtTokenProvider;
+  private final JwtConfig jwtConfig;
+  private final UserRepository userRepository;
+  private final SessionService sessionService;
+  private final SecurityQuestionService securityQuestionService;
+  private final TwoFactorService twoFactorService;
+
+  private final EmailService emailService;
+  private final OtpService otpService;
+  private final AuditLogService auditLogService;
+  private final LoginAttemptService loginAttemptService;
+  private final SecurityAlertService securityAlertService;
+  private final AdaptiveAuthService adaptiveAuthService;
+  private final GeoLocationService geoLocationService;
+  private final DeviceFingerprintUtil deviceFingerprintUtil;
+  private final DuressService duressService;
+
+  public boolean validateToken(String token) {
+<span class="nc" id="L64">    return jwtTokenProvider.validateToken(token);</span>
+  }
+
+  @Transactional
+  public void verifyMasterPassword(String username, VerifyMasterPasswordRequest request) {
+<span class="nc" id="L69">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+    try {
+<span class="nc" id="L72">      authenticationManager</span>
+<span class="nc" id="L73">          .authenticate(new UsernamePasswordAuthenticationToken(user.getUsername(), request.getMasterPassword()));</span>
+<span class="nc" id="L74">    } catch (org.springframework.security.core.AuthenticationException e) {</span>
+<span class="nc" id="L75">      throw new AuthenticationException(&quot;Invalid master password&quot;);</span>
+<span class="nc" id="L76">    }</span>
+<span class="nc" id="L77">  }</span>
+
+  @Transactional
+  public void sendOtp(String username) {
+<span class="fc" id="L81">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L83">    String otpCode = otpService.generateOtp(user, &quot;EMAIL&quot;);</span>
+
+<span class="fc" id="L85">    emailService.sendOtpEmail(user.getEmail(), otpCode);</span>
+<span class="fc" id="L86">  }</span>
+
+  @Transactional
+  public AuthResponse login(LoginRequest request, HttpServletRequest httpRequest) {
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">    String ip = httpRequest != null ? httpRequest.getRemoteAddr() : null;</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">    String deviceInfo = httpRequest != null ? httpRequest.getHeader(&quot;User-Agent&quot;) : null;</span>
+<span class="fc" id="L92">    String deviceFingerprint = deviceFingerprintUtil.generateFingerprint(httpRequest);</span>
+<span class="fc" id="L93">    String location = geoLocationService.getLocationFromIp(ip);</span>
+
+<span class="fc" id="L95">    User userForLockCheck = userRepository.findByUsername(request.getUsername())</span>
+<span class="fc" id="L96">        .or(() -&gt; userRepository.findByEmail(request.getUsername()))</span>
+<span class="fc" id="L97">        .orElse(null);</span>
+<span class="fc bfc" id="L98" title="All 4 branches covered.">    if (userForLockCheck != null &amp;&amp; userForLockCheck.getLockedUntil() != null</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        &amp;&amp; userForLockCheck.getLockedUntil().isAfter(LocalDateTime.now())) {</span>
+<span class="fc" id="L100">      loginAttemptService.recordLoginAttempt(request.getUsername(), false, &quot;Account locked&quot;, ip, deviceInfo, location,</span>
+<span class="fc" id="L101">          0);</span>
+<span class="fc" id="L102">      throw new AuthenticationException(&quot;Account is locked until &quot; + userForLockCheck.getLockedUntil());</span>
+    }
+
+<span class="fc bfc" id="L105" title="All 4 branches covered.">    if (userForLockCheck != null &amp;&amp; !Boolean.TRUE.equals(userForLockCheck.getEmailVerified())) {</span>
+<span class="fc" id="L106">      throw new AuthenticationException(&quot;Email not verified. Please check your email for the verification code.&quot;);</span>
+    }
+
+<span class="fc" id="L109">    int riskScore = adaptiveAuthService.calculateRiskScore(request.getUsername(), ip, deviceInfo, deviceFingerprint);</span>
+
+    try {
+<span class="fc" id="L112">      Authentication authentication = authenticationManager.authenticate(</span>
+          new UsernamePasswordAuthenticationToken(
+<span class="fc" id="L114">              request.getUsername(),</span>
+<span class="fc" id="L115">              request.getMasterPassword()));</span>
+
+<span class="fc" id="L117">      User user = userRepository.findByUsername(request.getUsername())</span>
+<span class="fc" id="L118">          .or(() -&gt; userRepository.findByEmail(request.getUsername()))</span>
+<span class="fc" id="L119">          .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+
+<span class="fc bfc" id="L121" title="All 2 branches covered.">      if (user.getFailedLoginAttempts() &gt; 0) {</span>
+<span class="fc" id="L122">        userRepository.resetFailedLoginAttempts(user.getUsername());</span>
+<span class="fc" id="L123">        user.setFailedLoginAttempts(0);</span>
+<span class="fc" id="L124">        user.setLockedUntil(null);</span>
+      }
+
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">      if (user.is2faEnabled() || adaptiveAuthService.requiresAdditionalVerification(riskScore)) {</span>
+
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (!user.is2faEnabled()) {</span>
+<span class="nc" id="L130">          sendOtp(user.getUsername());</span>
+        }
+<span class="nc" id="L132">        return AuthResponse.builder()</span>
+<span class="nc" id="L133">            .requires2FA(true)</span>
+<span class="nc" id="L134">            .username(user.getUsername())</span>
+<span class="nc" id="L135">            .build();</span>
+      }
+
+<span class="fc" id="L138">      String accessToken = jwtTokenProvider.generateAccessToken(authentication);</span>
+<span class="fc" id="L139">      String refreshToken = jwtTokenProvider.generateRefreshToken(authentication);</span>
+
+<span class="fc" id="L141">      sessionService.createSession(user, accessToken, httpRequest, location, deviceFingerprint);</span>
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">      if (loginAttemptService.isNewDevice(user.getUsername(), deviceInfo)) {</span>
+<span class="fc" id="L144">        securityAlertService.createAlert(user.getUsername(),</span>
+            com.revature.passwordmanager.model.security.SecurityAlert.AlertType.NEW_DEVICE_LOGIN,
+            &quot;New Device Detected&quot;,
+            &quot;Login detected from a new device or browser: &quot; + deviceInfo,
+            com.revature.passwordmanager.model.security.SecurityAlert.Severity.MEDIUM);
+      }
+
+<span class="fc" id="L151">      auditLogService.logAction(user.getUsername(),</span>
+          LOGIN,
+          &quot;Successful login&quot;, ip);
+<span class="fc" id="L154">      loginAttemptService.recordLoginAttempt(user.getUsername(), true, null, ip, deviceInfo, location, riskScore);</span>
+
+<span class="fc" id="L156">      return AuthResponse.builder()</span>
+<span class="fc" id="L157">          .accessToken(accessToken)</span>
+<span class="fc" id="L158">          .refreshToken(refreshToken)</span>
+<span class="fc" id="L159">          .username(user.getUsername())</span>
+<span class="fc" id="L160">          .expiresIn(jwtConfig.getAccessTokenExpiration())</span>
+<span class="fc" id="L161">          .requires2FA(false)</span>
+<span class="fc" id="L162">          .build();</span>
+
+<span class="fc" id="L164">    } catch (org.springframework.security.core.AuthenticationException e) {</span>
+
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">      if (userForLockCheck != null) {</span>
+<span class="fc" id="L167">        userRepository.incrementFailedLoginAttempts(userForLockCheck.getUsername());</span>
+
+<span class="fc" id="L169">        User updatedUser = userRepository.findById(userForLockCheck.getId()).orElse(userForLockCheck);</span>
+<span class="fc" id="L170">        int attempts = updatedUser.getFailedLoginAttempts();</span>
+
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (attempts &gt;= 3) {</span>
+<span class="fc" id="L173">          securityAlertService.createAlert(request.getUsername(),</span>
+              AlertType.MULTIPLE_FAILED_LOGINS,
+              &quot;Multiple Failed Login Attempts&quot;,
+              attempts + &quot; failed login attempts detected from IP: &quot;
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                  + (httpRequest != null ? httpRequest.getRemoteAddr() : &quot;unknown&quot;),</span>
+              Severity.HIGH);
+        }
+
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (attempts &gt;= 5) {</span>
+<span class="fc" id="L182">          int lockoutCount = updatedUser.getLockoutCount() + 1;</span>
+<span class="fc" id="L183">          long lockMinutes = (long) Math.min(15.0 * Math.pow(2.0, lockoutCount - 1), 1440.0);</span>
+<span class="fc" id="L184">          updatedUser.setLockedUntil(LocalDateTime.now().plusMinutes(lockMinutes));</span>
+<span class="fc" id="L185">          updatedUser.setLockoutCount(lockoutCount);</span>
+<span class="fc" id="L186">          updatedUser.setFailedLoginAttempts(0);</span>
+
+<span class="fc" id="L188">          securityAlertService.createAlert(request.getUsername(),</span>
+              AlertType.ACCOUNT_LOCKED,
+              &quot;Account Locked&quot;,
+              &quot;Account locked for &quot; + lockMinutes + &quot; minutes due to &quot; + attempts + &quot; failed login attempts&quot;,
+              Severity.CRITICAL);
+
+<span class="fc" id="L194">          userRepository.save(updatedUser);</span>
+        }
+      }
+
+<span class="fc" id="L198">      auditLogService.logAction(request.getUsername(),</span>
+          LOGIN_FAILED,
+          &quot;Failed login attempt&quot;, ip);
+<span class="fc" id="L201">      loginAttemptService.recordLoginAttempt(request.getUsername(), false, &quot;Invalid credentials&quot;, ip, deviceInfo,</span>
+<span class="fc" id="L202">          location, riskScore);</span>
+<span class="fc" id="L203">      throw new AuthenticationException(&quot;Invalid username or password&quot;);</span>
+    }
+  }
+
+  @Transactional
+  public AuthResponse refreshToken(RefreshTokenRequest request,
+      HttpServletRequest httpRequest) {
+<span class="fc" id="L210">    String refreshToken = request.getRefreshToken();</span>
+
+<span class="fc bfc" id="L212" title="All 2 branches covered.">    if (!jwtTokenProvider.validateToken(refreshToken)) {</span>
+<span class="fc" id="L213">      throw new AuthenticationException(&quot;Invalid or expired refresh token&quot;);</span>
+    }
+
+<span class="fc" id="L216">    String username = jwtTokenProvider.getUsernameFromToken(refreshToken);</span>
+<span class="fc" id="L217">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L219">    UserDetails userDetails = new org.springframework.security.core.userdetails.User(</span>
+<span class="fc" id="L220">        user.getUsername(), user.getMasterPasswordHash(), Collections.emptyList());</span>
+
+<span class="fc" id="L222">    Authentication authentication = new UsernamePasswordAuthenticationToken(userDetails, null,</span>
+<span class="fc" id="L223">        userDetails.getAuthorities());</span>
+
+<span class="fc" id="L225">    String newAccessToken = jwtTokenProvider.generateAccessToken(authentication);</span>
+<span class="fc" id="L226">    String newRefreshToken = jwtTokenProvider.generateRefreshToken(authentication);</span>
+
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">    String ip = httpRequest != null ? httpRequest.getRemoteAddr() : null;</span>
+<span class="fc" id="L229">    String location = geoLocationService.getLocationFromIp(ip);</span>
+<span class="fc" id="L230">    String deviceFingerprint = deviceFingerprintUtil.generateFingerprint(httpRequest);</span>
+<span class="fc" id="L231">    sessionService.createSession(user, newAccessToken, httpRequest, location, deviceFingerprint);</span>
+
+<span class="fc" id="L233">    return AuthResponse.builder()</span>
+<span class="fc" id="L234">        .accessToken(newAccessToken)</span>
+<span class="fc" id="L235">        .refreshToken(newRefreshToken)</span>
+<span class="fc" id="L236">        .username(user.getUsername())</span>
+<span class="fc" id="L237">        .expiresIn(jwtConfig.getAccessTokenExpiration())</span>
+<span class="fc" id="L238">        .requires2FA(user.is2faEnabled())</span>
+<span class="fc" id="L239">        .build();</span>
+  }
+
+  @Transactional
+  public AuthResponse duressLogin(LoginRequest request, HttpServletRequest httpRequest) {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">    if (!duressService.isDuressLogin(request.getUsername(), request.getMasterPassword())) {</span>
+<span class="fc" id="L245">      throw new AuthenticationException(&quot;Invalid username or password&quot;);</span>
+    }
+
+<span class="fc" id="L248">    User user = userRepository.findByUsername(request.getUsername())</span>
+<span class="pc" id="L249">        .or(() -&gt; userRepository.findByEmail(request.getUsername()))</span>
+<span class="pc" id="L250">        .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+
+<span class="fc" id="L252">    UserDetails userDetails = new org.springframework.security.core.userdetails.User(</span>
+<span class="fc" id="L253">        user.getUsername(), user.getMasterPasswordHash(), Collections.emptyList());</span>
+
+<span class="fc" id="L255">    Authentication authentication = new UsernamePasswordAuthenticationToken(userDetails, null,</span>
+<span class="fc" id="L256">        userDetails.getAuthorities());</span>
+
+<span class="fc" id="L258">    String accessToken = jwtTokenProvider.generateDuressToken(authentication);</span>
+<span class="fc" id="L259">    String refreshToken = jwtTokenProvider.generateRefreshToken(authentication);</span>
+
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">    String ip = httpRequest != null ? httpRequest.getRemoteAddr() : null;</span>
+<span class="fc" id="L262">    String location = geoLocationService.getLocationFromIp(ip);</span>
+<span class="fc" id="L263">    String deviceFingerprint = deviceFingerprintUtil.generateFingerprint(httpRequest);</span>
+
+<span class="fc" id="L265">    sessionService.createSession(user, accessToken, httpRequest, location, deviceFingerprint);</span>
+
+<span class="fc" id="L267">    return AuthResponse.builder()</span>
+<span class="fc" id="L268">        .accessToken(accessToken)</span>
+<span class="fc" id="L269">        .refreshToken(refreshToken)</span>
+<span class="fc" id="L270">        .username(user.getUsername())</span>
+<span class="fc" id="L271">        .expiresIn(jwtConfig.getAccessTokenExpiration())</span>
+<span class="fc" id="L272">        .requires2FA(false)</span>
+<span class="fc" id="L273">        .build();</span>
+  }
+
+  public void logout(String authHeader, String username) {
+<span class="fc bfc" id="L277" title="All 4 branches covered.">    if (authHeader != null &amp;&amp; authHeader.startsWith(&quot;Bearer &quot;)) {</span>
+<span class="fc" id="L278">      String accessToken = authHeader.substring(7);</span>
+
+<span class="fc" id="L280">      sessionService.terminateSessionByToken(accessToken);</span>
+    }
+
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">    if (username != null) {</span>
+<span class="fc" id="L284">      auditLogService.logAction(username,</span>
+          LOGOUT,
+          &quot;User logged out&quot;);
+    }
+<span class="fc" id="L288">  }</span>
+
+  @Transactional(readOnly = true)
+  public List&lt;SecurityQuestionDTO&gt; getSecurityQuestions(String username) {
+<span class="fc" id="L292">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L294">    return securityQuestionService</span>
+<span class="fc" id="L295">        .getSecurityQuestions(user).stream()</span>
+<span class="fc" id="L296">        .map(sq -&gt; new SecurityQuestionDTO(sq.getQuestionText(), &quot;&quot;))</span>
+<span class="fc" id="L297">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional
+  public AuthResponse verifyOtp(String username, String code, HttpServletRequest httpRequest) {
+<span class="fc" id="L302">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc bfc" id="L304" title="All 2 branches covered.">    if (!user.is2faEnabled()) {</span>
+<span class="fc" id="L305">      throw new AuthenticationException(&quot;2FA is not enabled for this user&quot;);</span>
+    }
+
+<span class="fc bfc" id="L308" title="All 2 branches covered.">    if (!twoFactorService.verifyCode(user, code)) {</span>
+<span class="fc" id="L309">      throw new AuthenticationException(&quot;Invalid 2FA code&quot;);</span>
+    }
+
+    try {
+<span class="fc" id="L313">      UserDetails userDetails = new org.springframework.security.core.userdetails.User(</span>
+<span class="fc" id="L314">          user.getUsername(), user.getMasterPasswordHash(), Collections.emptyList());</span>
+
+<span class="fc" id="L316">      Authentication authentication = new UsernamePasswordAuthenticationToken(userDetails, null,</span>
+<span class="fc" id="L317">          userDetails.getAuthorities());</span>
+
+<span class="fc" id="L319">      String accessToken = jwtTokenProvider.generateAccessToken(authentication);</span>
+<span class="fc" id="L320">      String refreshToken = jwtTokenProvider.generateRefreshToken(authentication);</span>
+
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">      String ip = httpRequest != null ? httpRequest.getRemoteAddr() : null;</span>
+<span class="fc" id="L323">      String location = geoLocationService.getLocationFromIp(ip);</span>
+<span class="fc" id="L324">      String deviceFingerprint = deviceFingerprintUtil.generateFingerprint(httpRequest);</span>
+<span class="fc" id="L325">      sessionService.createSession(user, accessToken, httpRequest, location, deviceFingerprint);</span>
+
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">      String deviceInfo = httpRequest != null ? httpRequest.getHeader(&quot;User-Agent&quot;) : null;</span>
+
+<span class="fc bfc" id="L329" title="All 2 branches covered.">      if (loginAttemptService.isNewDevice(user.getUsername(), deviceInfo)) {</span>
+<span class="fc" id="L330">        securityAlertService.createAlert(user.getUsername(),</span>
+            AlertType.NEW_DEVICE_LOGIN,
+            &quot;New Device Detected&quot;,
+            &quot;Login detected from a new device or browser: &quot; + deviceInfo,
+            Severity.MEDIUM);
+      }
+
+<span class="fc" id="L337">      auditLogService.logAction(user.getUsername(),</span>
+          LOGIN,
+          &quot;Successful login (2FA)&quot;, ip);
+<span class="fc" id="L340">      loginAttemptService.recordLoginAttempt(user.getUsername(), true, null, ip, deviceInfo, location, 0);</span>
+
+<span class="fc" id="L342">      return AuthResponse.builder()</span>
+<span class="fc" id="L343">          .accessToken(accessToken)</span>
+<span class="fc" id="L344">          .refreshToken(refreshToken)</span>
+<span class="fc" id="L345">          .username(user.getUsername())</span>
+<span class="fc" id="L346">          .expiresIn(jwtConfig.getAccessTokenExpiration())</span>
+<span class="fc" id="L347">          .requires2FA(false)</span>
+<span class="fc" id="L348">          .build();</span>
+<span class="nc" id="L349">    } catch (Exception e) {</span>
+<span class="nc" id="L350">      throw new AuthenticationException(</span>
+<span class="nc" id="L351">          &quot;2FA verified but login failed: &quot; + e.getClass().getSimpleName() + &quot; - &quot; + e.getMessage());</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

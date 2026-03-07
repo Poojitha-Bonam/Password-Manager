@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TwoFactorAuth.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.auth</a> &gt; <span class="el_source">TwoFactorAuth.java</span></div><h1>TwoFactorAuth.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.auth;
+
+import com.revature.passwordmanager.model.user.User;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = &quot;two_factor_auth&quot;)
+<span class="pc bpc" id="L17" title="43 of 58 branches missed.">@Data</span>
+<span class="pc bpc" id="L18" title="1 of 6 branches missed.">@Builder</span>
+<span class="fc" id="L19">@NoArgsConstructor</span>
+<span class="fc" id="L20">@AllArgsConstructor</span>
+public class TwoFactorAuth {
+
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+<span class="fc" id="L25">  private Long id;</span>
+
+  @OneToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = &quot;user_id&quot;, nullable = false, unique = true)
+<span class="fc" id="L29">  private User user;</span>
+
+  @Column(name = &quot;secret_key&quot;, nullable = false)
+<span class="fc" id="L32">  private String secretKey;</span>
+
+  @Column(name = &quot;is_enabled&quot;, nullable = false)
+  @Builder.Default
+<span class="fc" id="L36">  private boolean isEnabled = false;</span>
+
+  @ElementCollection
+  @CollectionTable(name = &quot;backup_codes&quot;, joinColumns = @JoinColumn(name = &quot;two_factor_auth_id&quot;))
+  @Column(name = &quot;code&quot;)
+  @Builder.Default
+<span class="fc" id="L42">  private List&lt;String&gt; recoveryCodes = new ArrayList&lt;&gt;();</span>
+
+  @Column(name = &quot;created_at&quot;, nullable = false, updatable = false)
+  @Builder.Default
+<span class="fc" id="L46">  private LocalDateTime createdAt = LocalDateTime.now();</span>
+
+  @UpdateTimestamp
+  @Column(name = &quot;updated_at&quot;)
+<span class="fc" id="L50">  private LocalDateTime updatedAt;</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

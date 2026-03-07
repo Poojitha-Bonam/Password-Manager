@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FolderService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.vault</a> &gt; <span class="el_source">FolderService.java</span></div><h1>FolderService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.vault;
+
+import com.revature.passwordmanager.dto.FolderDTO;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.Folder;
+import com.revature.passwordmanager.repository.FolderRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+<span class="fc" id="L17">@RequiredArgsConstructor</span>
+public class FolderService {
+
+  private final FolderRepository folderRepository;
+  private final UserRepository userRepository;
+
+  @Transactional(readOnly = true)
+  public List&lt;FolderDTO&gt; getFolders(String username) {
+<span class="fc" id="L25">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L26">    List&lt;Folder&gt; folders = folderRepository.findByUserAndParentFolderIsNull(user);</span>
+<span class="fc" id="L27">    return folders.stream().map(this::mapToDTO).collect(Collectors.toList());</span>
+  }
+
+  @Transactional(readOnly = true)
+  public FolderDTO getFolderById(Long id, String username) {
+<span class="nc" id="L32">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="nc" id="L33">    Folder folder = folderRepository.findByIdAndUser(id, user)</span>
+<span class="nc" id="L34">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Folder&quot;, &quot;id&quot;, id));</span>
+<span class="nc" id="L35">    return mapToDTO(folder);</span>
+  }
+
+  @Transactional
+  public FolderDTO createFolder(String name, Long parentFolderId, String username) {
+<span class="fc" id="L40">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L41">    Folder parentFolder = null;</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">    if (parentFolderId != null) {</span>
+<span class="fc" id="L43">      parentFolder = folderRepository.findByIdAndUser(parentFolderId, user)</span>
+<span class="pc" id="L44">          .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Parent Folder&quot;, &quot;id&quot;, parentFolderId));</span>
+    }
+
+<span class="fc" id="L47">    Folder folder = Folder.builder()</span>
+<span class="fc" id="L48">        .name(name)</span>
+<span class="fc" id="L49">        .user(user)</span>
+<span class="fc" id="L50">        .parentFolder(parentFolder)</span>
+<span class="fc" id="L51">        .build();</span>
+
+<span class="fc" id="L53">    Folder savedFolder = folderRepository.save(folder);</span>
+<span class="fc" id="L54">    return mapToDTO(savedFolder);</span>
+  }
+
+  @Transactional
+  public FolderDTO updateFolder(Long id, String name, String username) {
+<span class="fc" id="L59">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L60">    Folder folder = folderRepository.findByIdAndUser(id, user)</span>
+<span class="pc" id="L61">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Folder&quot;, &quot;id&quot;, id));</span>
+
+<span class="fc" id="L63">    folder.setName(name);</span>
+<span class="fc" id="L64">    Folder savedFolder = folderRepository.save(folder);</span>
+<span class="fc" id="L65">    return mapToDTO(savedFolder);</span>
+  }
+
+  @Transactional
+  public FolderDTO moveFolder(Long id, Long newParentId, String username) {
+<span class="fc" id="L70">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L71">    Folder folder = folderRepository.findByIdAndUser(id, user)</span>
+<span class="pc" id="L72">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Folder&quot;, &quot;id&quot;, id));</span>
+
+<span class="fc" id="L74">    Folder newParent = null;</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">    if (newParentId != null) {</span>
+
+<span class="fc bfc" id="L77" title="All 2 branches covered.">      if (folder.getId().equals(newParentId)) {</span>
+<span class="fc" id="L78">        throw new IllegalArgumentException(&quot;Cannot move a folder into itself&quot;);</span>
+      }
+
+<span class="fc" id="L81">      newParent = folderRepository.findByIdAndUser(newParentId, user)</span>
+<span class="pc" id="L82">          .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Parent Folder&quot;, &quot;id&quot;, newParentId));</span>
+    }
+
+<span class="fc" id="L85">    folder.setParentFolder(newParent);</span>
+<span class="fc" id="L86">    Folder savedFolder = folderRepository.save(folder);</span>
+<span class="fc" id="L87">    return mapToDTO(savedFolder);</span>
+  }
+
+  @Transactional
+  public void deleteFolder(Long id, String username) {
+<span class="fc" id="L92">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L93">    Folder folder = folderRepository.findByIdAndUser(id, user)</span>
+<span class="pc" id="L94">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Folder&quot;, &quot;id&quot;, id));</span>
+
+<span class="fc" id="L96">    folderRepository.delete(folder);</span>
+<span class="fc" id="L97">  }</span>
+
+  private FolderDTO mapToDTO(Folder folder) {
+<span class="fc" id="L100">    return FolderDTO.builder()</span>
+<span class="fc" id="L101">        .id(folder.getId())</span>
+<span class="fc" id="L102">        .name(folder.getName())</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        .parentFolderId(folder.getParentFolder() != null ? folder.getParentFolder().getId() : null)</span>
+<span class="fc" id="L104">        .subfolders(folder.getSubfolders().stream().map(this::mapToDTO).collect(Collectors.toList()))</span>
+<span class="fc" id="L105">        .createdAt(folder.getCreatedAt())</span>
+<span class="fc" id="L106">        .updatedAt(folder.getUpdatedAt())</span>
+<span class="fc" id="L107">        .build();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

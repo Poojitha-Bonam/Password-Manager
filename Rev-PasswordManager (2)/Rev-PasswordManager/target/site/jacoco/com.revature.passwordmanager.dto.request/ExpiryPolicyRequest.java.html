@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExpiryPolicyRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.dto.request</a> &gt; <span class="el_source">ExpiryPolicyRequest.java</span></div><h1>ExpiryPolicyRequest.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.dto.request;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * Feature 38 – Password Expiration Tracker.
+ *
+ * &lt;p&gt;Request body for {@code PUT /api/expiry/policy}.&lt;/p&gt;
+ */
+<span class="pc bpc" id="L15" title="27 of 38 branches missed.">@Data</span>
+<span class="fc" id="L16">@Builder</span>
+<span class="fc" id="L17">@NoArgsConstructor</span>
+<span class="fc" id="L18">@AllArgsConstructor</span>
+public class ExpiryPolicyRequest {
+
+    /** Days until a password is considered expired. Must be between 1 and 3650 (10 years). */
+    @Min(value = 1, message = &quot;defaultExpiryDays must be at least 1&quot;)
+    @Max(value = 3650, message = &quot;defaultExpiryDays must not exceed 3650&quot;)
+<span class="fc" id="L24">    private Integer defaultExpiryDays;</span>
+
+    /** Days until a password is considered critically old. Must be &gt;= defaultExpiryDays. */
+    @Min(value = 1, message = &quot;criticalExpiryDays must be at least 1&quot;)
+    @Max(value = 3650, message = &quot;criticalExpiryDays must not exceed 3650&quot;)
+<span class="fc" id="L29">    private Integer criticalExpiryDays;</span>
+
+    /** How many days before expiry to send a reminder. */
+    @Min(value = 1, message = &quot;reminderDaysBefore must be at least 1&quot;)
+    @Max(value = 365, message = &quot;reminderDaysBefore must not exceed 365&quot;)
+<span class="fc" id="L34">    private Integer reminderDaysBefore;</span>
+
+    /** Whether expiry tracking is enabled. */
+<span class="fc" id="L37">    private Boolean enabled;</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReceiveShareRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.dto.request</a> &gt; <span class="el_source">ReceiveShareRequest.java</span></div><h1>ReceiveShareRequest.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.dto.request;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * Optional request body for the {@code GET /api/shares/{token}} endpoint.
+ *
+ * &lt;p&gt;Gap analysis (Feature 35) identified that this class was proposed in the spec but
+ * was not implemented because the retrieval endpoint accepts the token as a URL path
+ * variable and requires no mandatory request body for correct HTTP semantics.&lt;/p&gt;
+ *
+ * &lt;p&gt;This DTO is retained for forward-compatibility: future enhancements may require
+ * the recipient to supply additional context (e.g. a one-time access PIN, a recipient
+ * identity token, or a decryption hint). For now all fields are optional and the
+ * endpoint continues to function without a body.&lt;/p&gt;
+ *
+ * &lt;h3&gt;Usage&lt;/h3&gt;
+ * &lt;pre&gt;
+ * POST /api/shares/{token}
+ * Content-Type: application/json
+ *
+ * {
+ *   &quot;recipientNote&quot;: &quot;Accessing for team setup&quot;,
+ *   &quot;recipientEmail&quot;: &quot;bob@example.com&quot;
+ * }
+ * &lt;/pre&gt;
+ */
+<span class="pc bpc" id="L31" title="10 of 22 branches missed.">@Data</span>
+<span class="fc" id="L32">@Builder</span>
+<span class="fc" id="L33">@NoArgsConstructor</span>
+<span class="fc" id="L34">@AllArgsConstructor</span>
+public class ReceiveShareRequest {
+
+    /**
+     * Optional note from the recipient explaining why they are accessing the share.
+     * Can be logged for audit purposes. Max 255 characters.
+     */
+<span class="fc" id="L41">    private String recipientNote;</span>
+
+    /**
+     * Optional self-reported email of the recipient.
+     * When provided, can be cross-checked against {@link com.revature.passwordmanager.model.sharing.SecureShare#getRecipientEmail()}
+     * for additional access validation in future implementations.
+     */
+<span class="fc" id="L48">    private String recipientEmail;</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

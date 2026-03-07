@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TwoFactorController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">TwoFactorController.java</span></div><h1>TwoFactorController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.response.TwoFactorSetupResponse;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.service.auth.SessionService;
+import com.revature.passwordmanager.service.auth.TwoFactorService;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import com.revature.passwordmanager.dto.response.TwoFactorStatusResponse;
+import com.revature.passwordmanager.dto.response.VerifySetupResponse;
+import com.revature.passwordmanager.dto.response.RegenerateCodesResponse;
+import com.revature.passwordmanager.dto.response.MessageResponse;
+
+@RestController
+@RequestMapping(&quot;/api/2fa&quot;)
+<span class="fc" id="L27">@RequiredArgsConstructor</span>
+@Tag(name = &quot;Two-Factor Auth Controller&quot;, description = &quot;Endpoints for managing 2FA&quot;)
+public class TwoFactorController {
+
+  private final TwoFactorService twoFactorService;
+  private final SessionService sessionService;
+  private final UserRepository userRepository;
+
+  @GetMapping(&quot;/status&quot;)
+  @Operation(summary = &quot;Get 2FA status&quot;)
+  public ResponseEntity&lt;TwoFactorStatusResponse&gt; getStatus(HttpServletRequest request) {
+<span class="fc" id="L38">    User user = getUserBySession(request);</span>
+<span class="fc" id="L39">    return ResponseEntity.ok(new TwoFactorStatusResponse(user.is2faEnabled()));</span>
+  }
+
+  @PostMapping(&quot;/setup&quot;)
+  @Operation(summary = &quot;Initialize 2FA setup (get QR code)&quot;)
+  public ResponseEntity&lt;TwoFactorSetupResponse&gt; setup2FA(HttpServletRequest request) {
+<span class="fc" id="L45">    User user = getUserBySession(request);</span>
+<span class="fc" id="L46">    TwoFactorSetupResponse response = twoFactorService.setup2FA(user);</span>
+<span class="fc" id="L47">    return ResponseEntity.ok(response);</span>
+  }
+
+  @PostMapping(&quot;/verify-setup&quot;)
+  @Operation(summary = &quot;Verify and enable 2FA&quot;)
+  public ResponseEntity&lt;VerifySetupResponse&gt; verifySetup(
+      @RequestParam String code,
+      HttpServletRequest request) {
+<span class="fc" id="L55">    User user = getUserBySession(request);</span>
+<span class="fc" id="L56">    twoFactorService.verifySetup(user, code);</span>
+<span class="fc" id="L57">    return ResponseEntity.ok(new VerifySetupResponse(</span>
+        true,
+        &quot;2FA enabled successfully&quot;,
+<span class="fc" id="L60">        twoFactorService.getRecoveryCodes(user)));</span>
+  }
+
+  @PostMapping(&quot;/disable&quot;)
+  @Operation(summary = &quot;Disable 2FA&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; disable2FA(HttpServletRequest request) {
+<span class="fc" id="L66">    User user = getUserBySession(request);</span>
+<span class="fc" id="L67">    twoFactorService.disable2FA(user);</span>
+<span class="fc" id="L68">    return ResponseEntity.ok(new MessageResponse(&quot;2FA disabled successfully&quot;));</span>
+  }
+
+  @GetMapping(&quot;/backup-codes&quot;)
+  @Operation(summary = &quot;Get backup recovery codes&quot;)
+  public ResponseEntity&lt;List&lt;String&gt;&gt; getBackupCodes(HttpServletRequest request) {
+<span class="fc" id="L74">    User user = getUserBySession(request);</span>
+<span class="fc" id="L75">    return ResponseEntity.ok(twoFactorService.getRecoveryCodes(user));</span>
+  }
+
+  @PostMapping(&quot;/regenerate-codes&quot;)
+  @Operation(summary = &quot;Regenerate backup recovery codes&quot;)
+  public ResponseEntity&lt;RegenerateCodesResponse&gt; regenerateCodes(HttpServletRequest request) {
+<span class="fc" id="L81">    User user = getUserBySession(request);</span>
+<span class="fc" id="L82">    List&lt;String&gt; newCodes = twoFactorService.regenerateRecoveryCodes(user);</span>
+<span class="fc" id="L83">    return ResponseEntity.ok(new RegenerateCodesResponse(</span>
+        true,
+        &quot;Backup codes regenerated successfully&quot;,
+        newCodes));
+  }
+
+  private User getUserBySession(HttpServletRequest request) {
+
+<span class="fc" id="L91">    String authHeader = request.getHeader(&quot;Authorization&quot;);</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">    if (authHeader == null || !authHeader.startsWith(&quot;Bearer &quot;)) {</span>
+<span class="nc" id="L93">      throw new AuthenticationException(&quot;Missing or invalid Authorization header&quot;);</span>
+    }
+<span class="fc" id="L95">    String token = authHeader.substring(7);</span>
+
+    Authentication authentication = SecurityContextHolder
+<span class="fc" id="L98">        .getContext().getAuthentication();</span>
+
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">    if (authentication == null || !authentication.isAuthenticated()) {</span>
+<span class="nc" id="L101">      throw new AuthenticationException(&quot;User not authenticated&quot;);</span>
+    }
+
+<span class="fc" id="L104">    Object principal = authentication.getPrincipal();</span>
+    String username;
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">    if (principal instanceof UserDetails) {</span>
+<span class="fc" id="L107">      username = ((UserDetails) principal).getUsername();</span>
+    } else {
+<span class="nc" id="L109">      username = principal.toString();</span>
+    }
+
+<span class="fc" id="L112">    String finalUsername = username;</span>
+<span class="fc" id="L113">    return userRepository.findByUsername(username)</span>
+<span class="pc" id="L114">        .or(() -&gt; userRepository.findByEmail(finalUsername))</span>
+<span class="pc" id="L115">        .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

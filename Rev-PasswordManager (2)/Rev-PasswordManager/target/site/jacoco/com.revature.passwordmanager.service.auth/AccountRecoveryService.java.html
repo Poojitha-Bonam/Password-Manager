@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AccountRecoveryService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.auth</a> &gt; <span class="el_source">AccountRecoveryService.java</span></div><h1>AccountRecoveryService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.auth;
+
+import com.revature.passwordmanager.dto.request.RecoveryRequest;
+import com.revature.passwordmanager.dto.request.ForgotPasswordRequest;
+import com.revature.passwordmanager.dto.request.VerifySecurityQuestionsRequest;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+
+@Service
+<span class="fc" id="L17">@RequiredArgsConstructor</span>
+public class AccountRecoveryService {
+
+  private final UserRepository userRepository;
+  private final SecurityQuestionService securityQuestionService;
+  private final PasswordEncoder passwordEncoder;
+  private final SessionService sessionService;
+
+  @Transactional
+  public void resetPassword(RecoveryRequest request) {
+<span class="fc" id="L27">    User user = userRepository.findByUsername(request.getUsername())</span>
+<span class="pc" id="L28">        .or(() -&gt; userRepository.findByEmail(request.getUsername()))</span>
+<span class="pc" id="L29">        .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+
+<span class="fc bfc" id="L31" title="All 2 branches covered.">    if (!securityQuestionService.verifySecurityAnswers(user, request.getSecurityAnswers())) {</span>
+<span class="fc" id="L32">      throw new AuthenticationException(&quot;Invalid security answers&quot;);</span>
+    }
+
+<span class="fc" id="L35">    user.setMasterPasswordHash(passwordEncoder.encode(request.getNewMasterPassword()));</span>
+<span class="fc" id="L36">    user.setUpdatedAt(LocalDateTime.now());</span>
+<span class="fc" id="L37">    userRepository.save(user);</span>
+
+<span class="fc" id="L39">    sessionService.terminateAllUserSessions(user.getUsername());</span>
+<span class="fc" id="L40">  }</span>
+
+  @Transactional
+  public void forgotPassword(ForgotPasswordRequest request) {
+<span class="nc" id="L44">    userRepository.findByUsername(request.getUsername())</span>
+<span class="nc" id="L45">        .or(() -&gt; userRepository.findByEmail(request.getUsername()))</span>
+<span class="nc" id="L46">        .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+
+<span class="nc" id="L48">  }</span>
+
+  @Transactional
+  public void verifySecurityQuestions(VerifySecurityQuestionsRequest request) {
+<span class="nc" id="L52">    User user = userRepository.findByUsername(request.getUsername())</span>
+<span class="nc" id="L53">        .or(() -&gt; userRepository.findByEmail(request.getUsername()))</span>
+<span class="nc" id="L54">        .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    if (!securityQuestionService.verifySecurityAnswers(user, request.getSecurityAnswers())) {</span>
+<span class="nc" id="L57">      throw new AuthenticationException(&quot;Invalid security answers&quot;);</span>
+    }
+<span class="nc" id="L59">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

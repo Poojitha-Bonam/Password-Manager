@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ActivityAggregator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.analytics</a> &gt; <span class="el_source">ActivityAggregator.java</span></div><h1>ActivityAggregator.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.analytics;
+
+import com.revature.passwordmanager.dto.response.TimelineEventDTO;
+import com.revature.passwordmanager.model.analytics.TimelineEvent;
+import com.revature.passwordmanager.model.security.AuditLog;
+import com.revature.passwordmanager.model.security.AuditLog.AuditAction;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Pipeline orchestrator for the Feature 37 Vault Timeline.
+ *
+ * &lt;p&gt;Responsibilities:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Build the title-to-entry cache from the database (one query per aggregate call).&lt;/li&gt;
+ *   &lt;li&gt;Delegate per-log enrichment to {@link TimelineEventEnricher} to produce typed
+ *       {@link TimelineEvent} domain objects.&lt;/li&gt;
+ *   &lt;li&gt;Map domain objects to {@link TimelineEventDTO}s via {@link TimelineEventEnricher#toDtoList}.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;This class intentionally owns &lt;em&gt;no enrichment logic itself&lt;/em&gt; — category resolution,
+ * severity classification, title extraction, and description building all live in
+ * {@link TimelineEventEnricher}. This separation was specified in the Feature 37 proposal
+ * and makes each concern independently testable.&lt;/p&gt;
+ */
+@Component
+<span class="fc" id="L32">@RequiredArgsConstructor</span>
+public class ActivityAggregator {
+
+    private final VaultEntryRepository vaultEntryRepository;
+    private final TimelineEventEnricher enricher;
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Converts a list of raw audit log entries into enriched {@link TimelineEventDTO}s.
+     *
+     * @param logs   raw audit log entries for a user, ordered as desired (typically newest-first)
+     * @param userId the owning user's id, used to build the title → entry cache
+     * @return ordered list of DTOs preserving input order
+     */
+    public List&lt;TimelineEventDTO&gt; aggregate(List&lt;AuditLog&gt; logs, Long userId) {
+<span class="fc" id="L48">        Map&lt;String, VaultEntry&gt; titleCache = buildTitleCache(userId);</span>
+<span class="fc" id="L49">        List&lt;TimelineEvent&gt; events = enricher.enrichAll(logs, titleCache);</span>
+<span class="fc" id="L50">        return enricher.toDtoList(events);</span>
+    }
+
+    /**
+     * Converts a single audit log entry to a {@link TimelineEventDTO}.
+     * Exposed for use by callers that already hold a pre-built title cache.
+     *
+     * @param log        the audit log record
+     * @param titleCache (lowercase title) → VaultEntry map
+     * @return the enriched DTO
+     */
+    public TimelineEventDTO mapLogToEvent(AuditLog log, Map&lt;String, VaultEntry&gt; titleCache) {
+<span class="nc" id="L62">        TimelineEvent event = enricher.enrich(log, titleCache);</span>
+<span class="nc" id="L63">        return enricher.toDto(event);</span>
+    }
+
+    // ── Delegation helpers (retained for backward-compat with VaultTimelineService) ──
+
+    /**
+     * Extracts the vault entry title from an audit log details string.
+     * Delegates to {@link TimelineEventEnricher#extractEntryTitle}.
+     */
+    public String extractEntryTitle(String details, AuditAction action) {
+<span class="fc" id="L73">        return enricher.extractEntryTitle(details, action);</span>
+    }
+
+    /**
+     * Maps an AuditAction to its high-level category string.
+     * Delegates to {@link TimelineEventEnricher#resolveActivityType} → category.
+     */
+    public String resolveCategory(AuditAction action) {
+<span class="fc" id="L81">        var type = enricher.resolveActivityType(action);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        return type != null ? type.getCategory().name() : &quot;SECURITY&quot;;</span>
+    }
+
+    /**
+     * Maps an AuditAction to its severity string.
+     * Delegates to {@link TimelineEventEnricher#resolveSeverity}.
+     */
+    public String resolveSeverity(AuditAction action) {
+<span class="nc" id="L90">        var type = enricher.resolveActivityType(action);</span>
+<span class="nc" id="L91">        return enricher.resolveSeverity(type);</span>
+    }
+
+    // ── Title cache ───────────────────────────────────────────────────────────
+
+    /**
+     * Builds a map of (lowercase title) → {@link VaultEntry} for a user.
+     * Includes soft-deleted entries so historical events can still be linked.
+     * When multiple entries share the same title, the active (non-deleted) entry wins.
+     *
+     * @param userId the user's id
+     * @return title cache map
+     */
+    public Map&lt;String, VaultEntry&gt; buildTitleCache(Long userId) {
+<span class="fc" id="L105">        List&lt;VaultEntry&gt; all = vaultEntryRepository.findByUserId(userId);</span>
+<span class="fc" id="L106">        Map&lt;String, VaultEntry&gt; cache = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (VaultEntry e : all) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (e.getTitle() == null) continue;</span>
+<span class="fc" id="L109">            String key = e.getTitle().toLowerCase();</span>
+<span class="fc" id="L110">            VaultEntry existing = cache.get(key);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (existing == null ||</span>
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">                    (Boolean.TRUE.equals(existing.getIsDeleted()) &amp;&amp; !Boolean.TRUE.equals(e.getIsDeleted()))) {</span>
+<span class="fc" id="L113">                cache.put(key, e);</span>
+            }
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        return cache;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

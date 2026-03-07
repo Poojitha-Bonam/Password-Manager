@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimelineEventDTO.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.dto.response</a> &gt; <span class="el_source">TimelineEventDTO.java</span></div><h1>TimelineEventDTO.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+/**
+ * Represents a single activity event on the vault timeline.
+ * Events are derived from audit logs and vault entry metadata.
+ */
+<span class="pc bpc" id="L14" title="69 of 86 branches missed.">@Data</span>
+<span class="fc" id="L15">@Builder</span>
+<span class="fc" id="L16">@NoArgsConstructor</span>
+<span class="fc" id="L17">@AllArgsConstructor</span>
+public class TimelineEventDTO {
+
+    /** Unique identifier for this event (audit log id or synthetic id) */
+<span class="fc" id="L21">    private Long id;</span>
+
+    /**
+     * Type of activity event.
+     * Values: ENTRY_CREATED, ENTRY_UPDATED, ENTRY_DELETED, ENTRY_RESTORED,
+     *         PASSWORD_VIEWED, PASSWORD_CHANGED, SHARE_CREATED, SHARE_ACCESSED,
+     *         SHARE_REVOKED, BREACH_DETECTED, BREACH_RESOLVED, VAULT_EXPORTED,
+     *         LOGIN, LOGOUT
+     */
+<span class="fc" id="L30">    private String eventType;</span>
+
+    /**
+     * Category group for color-coding on the frontend.
+     * Values: VAULT, SECURITY, SHARING, AUTH, BREACH, BACKUP
+     */
+<span class="fc" id="L36">    private String category;</span>
+
+    /** Human-readable description of the event */
+<span class="fc" id="L39">    private String description;</span>
+
+    /** Vault entry id if applicable (null for login/export/etc events) */
+<span class="fc" id="L42">    private Long vaultEntryId;</span>
+
+    /** Title of the vault entry if applicable */
+<span class="fc" id="L45">    private String vaultEntryTitle;</span>
+
+    /** Website URL of the vault entry if applicable */
+<span class="fc" id="L48">    private String websiteUrl;</span>
+
+    /** IP address from which the action was performed */
+<span class="fc" id="L51">    private String ipAddress;</span>
+
+    /** Timestamp of the event */
+<span class="fc" id="L54">    private LocalDateTime timestamp;</span>
+
+    /**
+     * Severity/importance level for the frontend to highlight critical events.
+     * Values: LOW, MEDIUM, HIGH, CRITICAL
+     */
+<span class="fc" id="L60">    private String severity;</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

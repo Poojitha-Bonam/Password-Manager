@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThirdPartyImportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.backup</a> &gt; <span class="el_source">ThirdPartyImportService.java</span></div><h1>ThirdPartyImportService.java</h1><pre class="source lang-java linenums">
+
+
+
+
+
+package com.revature.passwordmanager.service.backup;
+
+import com.revature.passwordmanager.dto.request.ThirdPartyImportRequest;
+import com.revature.passwordmanager.dto.response.ImportResult;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import com.revature.passwordmanager.service.vault.VaultService;
+import com.revature.passwordmanager.service.backup.importers.Importer;
+import com.revature.passwordmanager.service.backup.importers.ImporterFactory;
+
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.crypto.SecretKey;
+import java.util.List;
+
+@Service
+<span class="fc" id="L30">@RequiredArgsConstructor</span>
+public class ThirdPartyImportService {
+
+<span class="fc" id="L33">  private static final Logger logger = LoggerFactory.getLogger(ThirdPartyImportService.class);</span>
+
+  private final UserRepository userRepository;
+  private final EncryptionService encryptionService;
+  private final VaultService vaultService;
+  private final ImporterFactory importerFactory;
+
+  @Transactional
+  public ImportResult importFromThirdParty(String username, ThirdPartyImportRequest request) {
+<span class="fc" id="L42">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+    // Derive key using the same method as VaultService (PBKDF2 with master password
+    // hash and salt)
+<span class="fc" id="L46">    SecretKey key = encryptionService.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+    try {
+<span class="fc" id="L49">      Importer importer = importerFactory.getImporter(request.getSource());</span>
+<span class="fc" id="L50">      List&lt;VaultEntry&gt; entries = importer.parse(request.getData(), user, key, encryptionService);</span>
+
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">      if (!entries.isEmpty()) {</span>
+<span class="fc" id="L53">        vaultService.bulkInsert(user.getUsername(), entries);</span>
+      }
+
+<span class="fc" id="L56">      return ImportResult.builder()</span>
+<span class="fc" id="L57">          .totalProcessed(entries.size())</span>
+<span class="fc" id="L58">          .successCount(entries.size())</span>
+<span class="fc" id="L59">          .failCount(0)</span>
+<span class="fc" id="L60">          .message(request.getSource() + &quot; import completed&quot;)</span>
+<span class="fc" id="L61">          .build();</span>
+
+<span class="fc" id="L63">    } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L64">      return ImportResult.builder()</span>
+<span class="fc" id="L65">          .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="fc" id="L66">          .message(e.getMessage())</span>
+<span class="fc" id="L67">          .build();</span>
+<span class="fc" id="L68">    } catch (Exception e) {</span>
+<span class="fc" id="L69">      logger.error(&quot;Failed to parse CSV for source {}: {}&quot;, request.getSource(), e.getMessage());</span>
+<span class="fc" id="L70">      return ImportResult.builder()</span>
+<span class="fc" id="L71">          .totalProcessed(0).successCount(0).failCount(1)</span>
+<span class="fc" id="L72">          .message(request.getSource() + &quot; CSV parsing error&quot;)</span>
+<span class="fc" id="L73">          .build();</span>
+    }
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;String&gt; getSupportedFormats() {
+<span class="fc" id="L79">    return importerFactory.getSupportedFormats();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

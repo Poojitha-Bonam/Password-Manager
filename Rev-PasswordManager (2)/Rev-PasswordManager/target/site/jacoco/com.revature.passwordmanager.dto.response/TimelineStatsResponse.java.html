@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimelineStatsResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.dto.response</a> &gt; <span class="el_source">TimelineStatsResponse.java</span></div><h1>TimelineStatsResponse.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Aggregated activity statistics for the vault timeline.
+ * Provides data suited for charts: event counts by type, by day, by month.
+ */
+<span class="pc bpc" id="L15" title="41 of 52 branches missed.">@Data</span>
+<span class="fc" id="L16">@Builder</span>
+<span class="fc" id="L17">@NoArgsConstructor</span>
+<span class="fc" id="L18">@AllArgsConstructor</span>
+public class TimelineStatsResponse {
+
+    /**
+     * Count of events grouped by event type.
+     * Key: event type string (e.g., &quot;ENTRY_CREATED&quot;)
+     * Value: count
+     */
+<span class="fc" id="L26">    private Map&lt;String, Integer&gt; eventsByType;</span>
+
+    /**
+     * Count of events grouped by category.
+     * Key: category string (e.g., &quot;VAULT&quot;, &quot;SECURITY&quot;)
+     * Value: count
+     */
+<span class="fc" id="L33">    private Map&lt;String, Integer&gt; eventsByCategory;</span>
+
+    /**
+     * Daily activity counts for the requested period.
+     * Ordered chronologically.
+     */
+<span class="fc" id="L39">    private List&lt;DailyActivityBucket&gt; dailyActivity;</span>
+
+    /**
+     * Monthly activity counts (last 12 months).
+     * Ordered chronologically.
+     */
+<span class="fc" id="L45">    private List&lt;MonthlyActivityBucket&gt; monthlyActivity;</span>
+
+    /** Total events in the queried period */
+<span class="fc" id="L48">    private int totalEvents;</span>
+
+    /** Average events per day in the queried period */
+<span class="fc" id="L51">    private double averageEventsPerDay;</span>
+
+    /** Day with the highest activity in the queried period */
+<span class="fc" id="L54">    private String peakActivityDate;</span>
+
+    /** Count on the peak activity day */
+<span class="fc" id="L57">    private int peakActivityCount;</span>
+
+<span class="pc bnc" id="L59" title="All 28 branches missed.">    @Data</span>
+<span class="pc" id="L60">    @Builder</span>
+<span class="nc" id="L61">    @NoArgsConstructor</span>
+<span class="fc" id="L62">    @AllArgsConstructor</span>
+    public static class DailyActivityBucket {
+        /** ISO date string (YYYY-MM-DD) */
+<span class="fc" id="L65">        private String date;</span>
+        /** Total events on this day */
+<span class="fc" id="L67">        private int count;</span>
+        /** Events broken down by category for stacked charts */
+<span class="fc" id="L69">        private int vaultCount;</span>
+<span class="fc" id="L70">        private int securityCount;</span>
+<span class="fc" id="L71">        private int sharingCount;</span>
+<span class="fc" id="L72">        private int authCount;</span>
+        /** Fix: previously BACKUP events (VAULT_EXPORTED) were silently dropped; now tracked */
+<span class="fc" id="L74">        private int backupCount;</span>
+<span class="fc" id="L75">        private int breachCount;</span>
+    }
+
+<span class="nc bnc" id="L78" title="All 16 branches missed.">    @Data</span>
+<span class="pc" id="L79">    @Builder</span>
+<span class="nc" id="L80">    @NoArgsConstructor</span>
+<span class="fc" id="L81">    @AllArgsConstructor</span>
+    public static class MonthlyActivityBucket {
+        /** Year-month label (e.g., &quot;2025-01&quot;) */
+<span class="fc" id="L84">        private String month;</span>
+        /** Total events in this month */
+<span class="fc" id="L86">        private int count;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RegistrationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.auth</a> &gt; <span class="el_source">RegistrationService.java</span></div><h1>RegistrationService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.auth;
+
+import com.revature.passwordmanager.dto.request.RegistrationRequest;
+import com.revature.passwordmanager.dto.response.UserResponse;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.Category;
+import com.revature.passwordmanager.model.vault.Folder;
+import com.revature.passwordmanager.repository.CategoryRepository;
+import com.revature.passwordmanager.repository.FolderRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.service.email.EmailService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+<span class="fc" id="L23">@RequiredArgsConstructor</span>
+public class RegistrationService {
+
+  private final UserRepository userRepository;
+  private final PasswordEncoder passwordEncoder;
+  private final SecurityQuestionService securityQuestionService;
+  private final OtpService otpService;
+  private final EmailService emailService;
+  private final FolderRepository folderRepository;
+  private final CategoryRepository categoryRepository;
+
+  @Transactional
+  public UserResponse registerUser(RegistrationRequest request) {
+
+<span class="fc bfc" id="L37" title="All 2 branches covered.">    if (userRepository.existsByEmail(request.getEmail())) {</span>
+<span class="fc" id="L38">      throw new AuthenticationException(&quot;Email already in use&quot;);</span>
+    }
+<span class="fc bfc" id="L40" title="All 2 branches covered.">    if (userRepository.existsByUsername(request.getUsername())) {</span>
+<span class="fc" id="L41">      throw new AuthenticationException(&quot;Username already in use&quot;);</span>
+    }
+
+<span class="pc bpc" id="L44" title="2 of 4 branches missed.">    if (request.getPasswordHint() != null &amp;&amp; !request.getPasswordHint().trim().isEmpty()) {</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">      if (request.getPasswordHint().toLowerCase().contains(request.getMasterPassword().toLowerCase())) {</span>
+<span class="fc" id="L46">        throw new AuthenticationException(&quot;Password hint cannot contain the master password&quot;);</span>
+      }
+    }
+
+<span class="fc" id="L50">    User user = User.builder()</span>
+<span class="fc" id="L51">        .email(request.getEmail())</span>
+<span class="fc" id="L52">        .username(request.getUsername())</span>
+<span class="fc" id="L53">        .masterPasswordHash(passwordEncoder.encode(request.getMasterPassword()))</span>
+<span class="fc" id="L54">        .passwordHint(request.getPasswordHint())</span>
+<span class="fc" id="L55">        .salt(UUID.randomUUID().toString())</span>
+<span class="fc" id="L56">        .createdAt(LocalDateTime.now())</span>
+<span class="fc" id="L57">        .updatedAt(LocalDateTime.now())</span>
+<span class="fc" id="L58">        .is2faEnabled(false)</span>
+<span class="fc" id="L59">        .emailVerified(false)</span>
+<span class="fc" id="L60">        .build();</span>
+
+<span class="fc" id="L62">    User savedUser = userRepository.save(user);</span>
+
+    // Create default folders and categories for the new user
+<span class="fc" id="L65">    createDefaultFolders(savedUser);</span>
+<span class="fc" id="L66">    createDefaultCategories(savedUser);</span>
+
+<span class="fc" id="L68">    securityQuestionService.saveSecurityQuestions(savedUser, request.getSecurityQuestions());</span>
+
+<span class="fc" id="L70">    String otpCode = otpService.generateOtp(savedUser, &quot;EMAIL_VERIFICATION&quot;);</span>
+<span class="fc" id="L71">    emailService.sendOtpEmail(savedUser.getEmail(), otpCode);</span>
+
+<span class="fc" id="L73">    return UserResponse.builder()</span>
+<span class="fc" id="L74">        .id(savedUser.getId())</span>
+<span class="fc" id="L75">        .email(savedUser.getEmail())</span>
+<span class="fc" id="L76">        .username(savedUser.getUsername())</span>
+<span class="fc" id="L77">        .is2faEnabled(savedUser.is2faEnabled())</span>
+<span class="fc" id="L78">        .createdAt(savedUser.getCreatedAt())</span>
+<span class="fc" id="L79">        .build();</span>
+  }
+
+  private void createDefaultFolders(User user) {
+<span class="fc" id="L83">    List&lt;String&gt; defaultFolders = List.of(&quot;Personal&quot;, &quot;Work&quot;, &quot;Finance&quot;, &quot;Social&quot;, &quot;Development&quot;);</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">    for (String folderName : defaultFolders) {</span>
+<span class="fc" id="L86">      Folder folder = Folder.builder()</span>
+<span class="fc" id="L87">          .name(folderName)</span>
+<span class="fc" id="L88">          .user(user)</span>
+<span class="fc" id="L89">          .createdAt(LocalDateTime.now())</span>
+<span class="fc" id="L90">          .updatedAt(LocalDateTime.now())</span>
+<span class="fc" id="L91">          .build();</span>
+<span class="fc" id="L92">      folderRepository.save(folder);</span>
+<span class="fc" id="L93">    }</span>
+<span class="fc" id="L94">  }</span>
+
+  private void createDefaultCategories(User user) {
+<span class="fc" id="L97">    List&lt;String[]&gt; defaultCategories = List.of(</span>
+        new String[] { &quot;Social Media&quot;, &quot;share&quot; },
+        new String[] { &quot;Banking&quot;, &quot;account_balance&quot; },
+        new String[] { &quot;Work&quot;, &quot;work&quot; },
+        new String[] { &quot;Shopping&quot;, &quot;shopping_cart&quot; },
+        new String[] { &quot;Email&quot;, &quot;email&quot; });
+
+<span class="fc bfc" id="L104" title="All 2 branches covered.">    for (String[] categoryData : defaultCategories) {</span>
+<span class="fc" id="L105">      Category category = Category.builder()</span>
+<span class="fc" id="L106">          .name(categoryData[0])</span>
+<span class="fc" id="L107">          .icon(categoryData[1])</span>
+<span class="fc" id="L108">          .user(user)</span>
+<span class="fc" id="L109">          .isDefault(false)</span>
+<span class="fc" id="L110">          .build();</span>
+<span class="fc" id="L111">      categoryRepository.save(category);</span>
+<span class="fc" id="L112">    }</span>
+<span class="fc" id="L113">  }</span>
+
+  @Transactional
+  public void verifyEmail(String username, String otpCode) {
+<span class="fc" id="L117">    User user = userRepository.findByUsername(username)</span>
+<span class="fc" id="L118">        .or(() -&gt; userRepository.findByEmail(username))</span>
+<span class="fc" id="L119">        .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+
+<span class="fc bfc" id="L121" title="All 2 branches covered.">    if (Boolean.TRUE.equals(user.getEmailVerified())) {</span>
+<span class="fc" id="L122">      throw new AuthenticationException(&quot;Email is already verified&quot;);</span>
+    }
+
+<span class="fc" id="L125">    otpService.validateOtp(user, otpCode, &quot;EMAIL_VERIFICATION&quot;);</span>
+
+<span class="fc" id="L127">    user.setEmailVerified(true);</span>
+<span class="fc" id="L128">    userRepository.save(user);</span>
+<span class="fc" id="L129">  }</span>
+
+  @Transactional
+  public void resendVerificationOtp(String username) {
+<span class="fc" id="L133">    User user = userRepository.findByUsername(username)</span>
+<span class="pc" id="L134">        .or(() -&gt; userRepository.findByEmail(username))</span>
+<span class="pc" id="L135">        .orElseThrow(() -&gt; new AuthenticationException(&quot;User not found&quot;));</span>
+
+<span class="fc bfc" id="L137" title="All 2 branches covered.">    if (Boolean.TRUE.equals(user.getEmailVerified())) {</span>
+<span class="fc" id="L138">      throw new AuthenticationException(&quot;Email is already verified&quot;);</span>
+    }
+
+<span class="fc" id="L141">    String otpCode = otpService.generateOtp(user, &quot;EMAIL_VERIFICATION&quot;);</span>
+<span class="fc" id="L142">    emailService.sendOtpEmail(user.getEmail(), otpCode);</span>
+<span class="fc" id="L143">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ShareExpirationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.sharing</a> &gt; <span class="el_source">ShareExpirationService.java</span></div><h1>ShareExpirationService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.sharing;
+
+import com.revature.passwordmanager.model.sharing.SecureShare;
+import com.revature.passwordmanager.model.sharing.SharePermission;
+import com.revature.passwordmanager.repository.SecureShareRepository;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+/**
+ * Service responsible for all share-expiration business logic.
+ *
+ * &lt;p&gt;Gap analysis (Feature 35) identified that this class was proposed in the spec but
+ * its responsibilities were previously split between the inline {@code SecureShare.isValid()}
+ * domain method and {@code SecureShareCleanupScheduler}. Extracting expiration logic here
+ * gives a single, testable unit that the scheduler, the retrieval flow, and admin tooling
+ * can all delegate to.&lt;/p&gt;
+ *
+ * &lt;h3&gt;Responsibilities&lt;/h3&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;Determine whether a {@link SecureShare} is still valid for access.&lt;/li&gt;
+ *   &lt;li&gt;Calculate the time remaining until a share expires.&lt;/li&gt;
+ *   &lt;li&gt;Bulk-expire shares that have passed their {@code expiresAt} timestamp.&lt;/li&gt;
+ *   &lt;li&gt;Apply permission-specific view-limit logic (VIEW_ONCE / VIEW_MULTIPLE / TEMPORARY_ACCESS).&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+<span class="fc" id="L34">@RequiredArgsConstructor</span>
+public class ShareExpirationService {
+
+<span class="fc" id="L37">    private static final Logger logger = LoggerFactory.getLogger(ShareExpirationService.class);</span>
+
+    private final SecureShareRepository shareRepository;
+
+    // ── Validity checks ───────────────────────────────────────────────────────
+
+    /**
+     * Returns {@code true} if the share is currently accessible:
+     * not revoked, not past its expiry timestamp, and within its allowed view count.
+     *
+     * @param share the share to check
+     * @return {@code true} if the share may still be accessed
+     */
+    public boolean isValid(SecureShare share) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (share == null) return false;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (share.isRevoked()) return false;</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (LocalDateTime.now().isAfter(share.getExpiresAt())) return false;</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        return !isViewLimitReached(share);</span>
+    }
+
+    /**
+     * Returns {@code true} if the share has reached its maximum permitted view count.
+     * {@link SharePermission#TEMPORARY_ACCESS} shares are treated as having unlimited views.
+     *
+     * @param share the share to check
+     * @return {@code true} if no further views are allowed due to view count
+     */
+    public boolean isViewLimitReached(SecureShare share) {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (share.getPermission() == SharePermission.TEMPORARY_ACCESS) {</span>
+<span class="fc" id="L66">            return false; // unlimited views while within the time window</span>
+        }
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        return share.getViewCount() &gt;= share.getMaxViews();</span>
+    }
+
+    /**
+     * Returns {@code true} if the share's expiry timestamp is in the past.
+     *
+     * @param share the share to check
+     * @return {@code true} if the share has expired
+     */
+    public boolean isExpired(SecureShare share) {
+<span class="fc" id="L78">        return LocalDateTime.now().isAfter(share.getExpiresAt());</span>
+    }
+
+    // ── Time-remaining calculation ────────────────────────────────────────────
+
+    /**
+     * Returns the number of seconds remaining until this share expires.
+     * Returns 0 if the share has already expired.
+     *
+     * @param share the share to inspect
+     * @return seconds until expiry, or 0 if already expired
+     */
+    public long secondsUntilExpiry(SecureShare share) {
+<span class="fc" id="L91">        long seconds = ChronoUnit.SECONDS.between(LocalDateTime.now(), share.getExpiresAt());</span>
+<span class="fc" id="L92">        return Math.max(0, seconds);</span>
+    }
+
+    /**
+     * Returns the number of views remaining for this share.
+     * Returns {@link Integer#MAX_VALUE} for {@link SharePermission#TEMPORARY_ACCESS} shares.
+     *
+     * @param share the share to inspect
+     * @return number of views remaining
+     */
+    public int viewsRemaining(SecureShare share) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (share.getPermission() == SharePermission.TEMPORARY_ACCESS) {</span>
+<span class="fc" id="L104">            return Integer.MAX_VALUE;</span>
+        }
+<span class="fc" id="L106">        return Math.max(0, share.getMaxViews() - share.getViewCount());</span>
+    }
+
+    // ── Expiration reason ─────────────────────────────────────────────────────
+
+    /**
+     * Returns a human-readable reason why a share is no longer valid,
+     * or {@code null} if the share is still valid.
+     *
+     * @param share the share to check
+     * @return invalidation reason string, or {@code null} if valid
+     */
+    public String getInvalidReason(SecureShare share) {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (share.isRevoked()) return &quot;revoked&quot;;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (isExpired(share)) return &quot;expired&quot;;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (isViewLimitReached(share)) return &quot;view limit reached&quot;;</span>
+<span class="fc" id="L122">        return null;</span>
+    }
+
+    // ── Bulk expiration (used by scheduler) ───────────────────────────────────
+
+    /**
+     * Hard-deletes all shares whose {@code expiresAt} timestamp is before
+     * the given cutoff and that have not been manually revoked.
+     * Called by {@code SecureShareCleanupScheduler} on a scheduled basis.
+     *
+     * @param olderThan cutoff timestamp — shares expiring before this are deleted
+     * @return the number of shares that were deleted
+     */
+    @Transactional
+    public int deleteExpiredShares(LocalDateTime olderThan) {
+<span class="fc" id="L137">        List&lt;SecureShare&gt; expired = shareRepository.findByExpiresAtBeforeAndIsRevokedFalse(olderThan);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (expired.isEmpty()) {</span>
+<span class="fc" id="L139">            return 0;</span>
+        }
+<span class="fc" id="L141">        shareRepository.deleteAll(expired);</span>
+<span class="fc" id="L142">        logger.info(&quot;Deleted {} expired secure shares (older than {})&quot;, expired.size(), olderThan);</span>
+<span class="fc" id="L143">        return expired.size();</span>
+    }
+
+    /**
+     * Convenience overload — deletes shares expired before right now minus the given hours.
+     *
+     * @param graceHours how many hours after expiry to wait before deleting
+     * @return the number of shares deleted
+     */
+    @Transactional
+    public int deleteExpiredSharesOlderThan(int graceHours) {
+<span class="fc" id="L154">        LocalDateTime cutoff = LocalDateTime.now().minusHours(graceHours);</span>
+<span class="fc" id="L155">        return deleteExpiredShares(cutoff);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

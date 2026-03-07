@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BackupController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">BackupController.java</span></div><h1>BackupController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.request.ImportRequest;
+import com.revature.passwordmanager.dto.request.ThirdPartyImportRequest;
+import com.revature.passwordmanager.dto.response.ExportResponse;
+import com.revature.passwordmanager.dto.response.ImportResult;
+import com.revature.passwordmanager.service.backup.ExportService;
+import com.revature.passwordmanager.service.backup.ImportService;
+import com.revature.passwordmanager.service.backup.ThirdPartyImportService;
+
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/api/backup&quot;)
+<span class="fc" id="L20">@RequiredArgsConstructor</span>
+public class BackupController {
+
+<span class="fc" id="L23">  private static final Logger logger = LoggerFactory.getLogger(BackupController.class);</span>
+
+  private final ExportService exportService;
+  private final ImportService importService;
+  private final ThirdPartyImportService thirdPartyImportService;
+  private final com.revature.passwordmanager.service.vault.VaultSnapshotService vaultSnapshotService;
+
+  @GetMapping(&quot;/export&quot;)
+  public ResponseEntity&lt;ExportResponse&gt; exportVault(
+      @RequestParam(defaultValue = &quot;JSON&quot;) String format,
+      @RequestParam(required = false) String password) {
+<span class="fc" id="L34">    String username = getCurrentUsername();</span>
+<span class="fc" id="L35">    return ResponseEntity.ok(exportService.exportVault(username, format, password));</span>
+  }
+
+  @PostMapping(&quot;/import&quot;)
+  public ResponseEntity&lt;ImportResult&gt; importVault(@RequestBody ImportRequest request) {
+<span class="fc" id="L40">    logger.info(&quot;Import request received in controller&quot;);</span>
+<span class="fc" id="L41">    logger.debug(&quot;Request format: {}, data length: {}&quot;,</span>
+<span class="fc" id="L42">        request.getFormat(),</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">        request.getData() != null ? request.getData().length() : 0);</span>
+<span class="fc" id="L44">    String username = getCurrentUsername();</span>
+<span class="fc" id="L45">    return ResponseEntity.ok(importService.importVault(username, request));</span>
+  }
+
+  @PostMapping(&quot;/import-external&quot;)
+  public ResponseEntity&lt;ImportResult&gt; importFromExternal(@RequestBody ThirdPartyImportRequest request) {
+<span class="fc" id="L50">    String username = getCurrentUsername();</span>
+<span class="fc" id="L51">    return ResponseEntity.ok(thirdPartyImportService.importFromThirdParty(username, request));</span>
+  }
+
+  @GetMapping(&quot;/export/preview&quot;)
+  public ResponseEntity&lt;ExportResponse&gt; previewExport(@RequestParam(defaultValue = &quot;JSON&quot;) String format) {
+<span class="fc" id="L56">    String username = getCurrentUsername();</span>
+<span class="fc" id="L57">    return ResponseEntity.ok(exportService.previewExport(username, format));</span>
+  }
+
+  @PostMapping(&quot;/import/validate&quot;)
+  public ResponseEntity&lt;ImportResult&gt; validateImport(@RequestBody ImportRequest request) {
+<span class="fc" id="L62">    String username = getCurrentUsername();</span>
+<span class="fc" id="L63">    return ResponseEntity.ok(importService.validateImport(username, request));</span>
+  }
+
+  @GetMapping(&quot;/import-external/formats&quot;)
+  public ResponseEntity&lt;java.util.List&lt;String&gt;&gt; getSupportedFormats() {
+<span class="fc" id="L68">    return ResponseEntity.ok(thirdPartyImportService.getSupportedFormats());</span>
+  }
+
+  @GetMapping(&quot;/snapshots&quot;)
+  public ResponseEntity&lt;java.util.List&lt;com.revature.passwordmanager.dto.response.SnapshotResponse&gt;&gt; getAllSnapshots() {
+<span class="fc" id="L73">    String username = getCurrentUsername();</span>
+<span class="fc" id="L74">    return ResponseEntity.ok(vaultSnapshotService.getAllSnapshots(username));</span>
+  }
+
+  @PostMapping(&quot;/snapshots/{id}/restore&quot;)
+  public ResponseEntity&lt;Void&gt; restoreSnapshot(@PathVariable Long id) {
+<span class="fc" id="L79">    String username = getCurrentUsername();</span>
+<span class="fc" id="L80">    vaultSnapshotService.restoreSnapshot(username, id);</span>
+<span class="fc" id="L81">    return ResponseEntity.ok().build();</span>
+  }
+
+  private String getCurrentUsername() {
+<span class="fc" id="L85">    return SecurityContextHolder.getContext().getAuthentication().getName();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ShareEncryptionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.sharing</a> &gt; <span class="el_source">ShareEncryptionService.java</span></div><h1>ShareEncryptionService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.sharing;
+
+import org.springframework.stereotype.Service;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.SecureRandom;
+import java.util.Base64;
+
+/**
+ * Handles one-time AES-256-GCM encryption for secure shares.
+ *
+ * &lt;p&gt;
+ * The encryption key is generated fresh for each share and returned to the
+ * caller
+ * to be embedded in the share URL fragment. It is &lt;em&gt;never persisted&lt;/em&gt; on
+ * the server —
+ * only the ciphertext and IV are stored in the database.
+ */
+@Service
+<span class="fc" id="L24">public class ShareEncryptionService {</span>
+
+    private static final String ALGORITHM = &quot;AES/GCM/NoPadding&quot;;
+    private static final int GCM_IV_LENGTH = 12;
+    private static final int GCM_TAG_LENGTH = 128;
+    private static final int KEY_SIZE = 256;
+<span class="fc" id="L30">    private static final SecureRandom SECURE_RANDOM = new SecureRandom();</span>
+
+    /**
+     * Encrypts plaintext with a freshly generated AES-256-GCM key.
+     *
+     * @param plaintext the data to encrypt
+     * @return a {@link ShareEncryptionResult} containing ciphertext, IV, and the
+     *         raw key
+     */
+    public ShareEncryptionResult encrypt(String plaintext) {
+        try {
+<span class="fc" id="L41">            KeyGenerator keyGen = KeyGenerator.getInstance(&quot;AES&quot;);</span>
+<span class="fc" id="L42">            keyGen.init(KEY_SIZE, SECURE_RANDOM);</span>
+<span class="fc" id="L43">            SecretKey key = keyGen.generateKey();</span>
+
+<span class="fc" id="L45">            byte[] iv = new byte[GCM_IV_LENGTH];</span>
+<span class="fc" id="L46">            SECURE_RANDOM.nextBytes(iv);</span>
+
+<span class="fc" id="L48">            Cipher cipher = Cipher.getInstance(ALGORITHM);</span>
+<span class="fc" id="L49">            cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH, iv));</span>
+
+<span class="fc" id="L51">            byte[] ciphertext = cipher.doFinal(plaintext.getBytes());</span>
+
+<span class="fc" id="L53">            return ShareEncryptionResult.builder()</span>
+<span class="fc" id="L54">                    .encryptedData(Base64.getEncoder().encodeToString(ciphertext))</span>
+<span class="fc" id="L55">                    .iv(Base64.getEncoder().encodeToString(iv))</span>
+<span class="fc" id="L56">                    .keyBase64(Base64.getEncoder().encodeToString(key.getEncoded()))</span>
+<span class="fc" id="L57">                    .build();</span>
+<span class="nc" id="L58">        } catch (Exception e) {</span>
+<span class="nc" id="L59">            throw new RuntimeException(&quot;Share encryption failed&quot;, e);</span>
+        }
+    }
+
+    /**
+     * Decrypts ciphertext using the provided Base64-encoded key and IV.
+     *
+     * @param encryptedData Base64-encoded ciphertext
+     * @param ivBase64      Base64-encoded IV
+     * @param keyBase64     Base64-encoded AES-256 key
+     * @return decrypted plaintext
+     */
+    public String decrypt(String encryptedData, String ivBase64, String keyBase64) {
+        try {
+<span class="fc" id="L73">            byte[] keyBytes = Base64.getDecoder().decode(keyBase64);</span>
+<span class="fc" id="L74">            SecretKey key = new SecretKeySpec(keyBytes, &quot;AES&quot;);</span>
+
+<span class="fc" id="L76">            byte[] iv = Base64.getDecoder().decode(ivBase64);</span>
+<span class="fc" id="L77">            byte[] ciphertext = Base64.getDecoder().decode(encryptedData);</span>
+
+<span class="fc" id="L79">            Cipher cipher = Cipher.getInstance(ALGORITHM);</span>
+<span class="fc" id="L80">            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH, iv));</span>
+
+<span class="fc" id="L82">            return new String(cipher.doFinal(ciphertext));</span>
+<span class="fc" id="L83">        } catch (Exception e) {</span>
+<span class="fc" id="L84">            throw new RuntimeException(&quot;Share decryption failed&quot;, e);</span>
+        }
+    }
+
+    /**
+     * Result of a one-time share encryption operation.
+     */
+<span class="pc" id="L91">    @lombok.Builder</span>
+<span class="nc bnc" id="L92" title="All 30 branches missed.">    @lombok.Data</span>
+<span class="nc" id="L93">    @lombok.NoArgsConstructor</span>
+<span class="fc" id="L94">    @lombok.AllArgsConstructor</span>
+    public static class ShareEncryptionResult {
+<span class="fc" id="L96">        private String encryptedData;</span>
+<span class="fc" id="L97">        private String iv;</span>
+        /**
+         * The one-time AES key in Base64 — must be sent to the client, never stored
+         * server-side
+         */
+<span class="fc" id="L102">        private String keyBase64;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

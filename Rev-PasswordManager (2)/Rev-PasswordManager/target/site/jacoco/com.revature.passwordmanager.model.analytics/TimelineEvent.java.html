@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimelineEvent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.analytics</a> &gt; <span class="el_source">TimelineEvent.java</span></div><h1>TimelineEvent.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.analytics;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+/**
+ * Domain model representing a single activity event on the vault timeline.
+ *
+ * &lt;p&gt;This is a transient (non-persisted) domain object that lives purely in
+ * the service layer. It is produced by
+ * {@link com.revature.passwordmanager.service.analytics.TimelineEventEnricher}
+ * from raw {@link com.revature.passwordmanager.model.security.AuditLog} records
+ * and then mapped to
+ * {@link com.revature.passwordmanager.dto.response.TimelineEventDTO} before
+ * being returned to the controller.&lt;/p&gt;
+ *
+ * &lt;p&gt;Separating the domain model from the DTO allows the service layer to work
+ * with typed {@link ActivityType} and {@link TimelinePeriod} values instead of
+ * raw strings, while the DTO layer converts them to strings for JSON
+ * serialisation.&lt;/p&gt;
+ */
+<span class="pc bpc" id="L26" title="55 of 70 branches missed.">@Data</span>
+<span class="fc" id="L27">@Builder</span>
+<span class="fc" id="L28">@NoArgsConstructor</span>
+<span class="fc" id="L29">@AllArgsConstructor</span>
+public class TimelineEvent {
+
+    /** Audit log id from which this event was derived. */
+<span class="fc" id="L33">    private Long sourceLogId;</span>
+
+    /** Strongly-typed activity type — never null. */
+<span class="fc" id="L36">    private ActivityType activityType;</span>
+
+    /** Human-readable description of what happened. */
+<span class="fc" id="L39">    private String description;</span>
+
+    /** Vault entry id referenced by this event, or {@code null} for session/system events. */
+<span class="fc" id="L42">    private Long vaultEntryId;</span>
+
+    /** Vault entry title resolved at enrichment time, or {@code null}. */
+<span class="fc" id="L45">    private String vaultEntryTitle;</span>
+
+    /** Website URL of the referenced vault entry, or {@code null}. */
+<span class="fc" id="L48">    private String websiteUrl;</span>
+
+    /** IP address from which the action was performed, or {@code null}. */
+<span class="fc" id="L51">    private String ipAddress;</span>
+
+    /** When the underlying audit log event occurred. */
+<span class="fc" id="L54">    private LocalDateTime occurredAt;</span>
+
+    /**
+     * Convenience accessor — delegates to {@link ActivityType#getCategory()}.
+     *
+     * @return the {@link TimelineCategory} for this event
+     */
+    public TimelineCategory getCategory() {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        return activityType != null ? activityType.getCategory() : null;</span>
+    }
+
+    /**
+     * Convenience accessor — returns the display label for this event type.
+     *
+     * @return human-readable event type label
+     */
+    public String getEventTypeLabel() {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        return activityType != null ? activityType.getDisplayLabel() : &quot;Unknown&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

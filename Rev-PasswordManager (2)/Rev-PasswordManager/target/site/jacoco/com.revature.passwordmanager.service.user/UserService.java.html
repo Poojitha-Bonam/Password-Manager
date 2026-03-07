@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.user</a> &gt; <span class="el_source">UserService.java</span></div><h1>UserService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.user;
+
+import com.revature.passwordmanager.dto.request.ChangePasswordRequest;
+import com.revature.passwordmanager.dto.request.UpdateProfileRequest;
+import com.revature.passwordmanager.dto.response.UserResponse;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import com.revature.passwordmanager.repository.CategoryRepository;
+import com.revature.passwordmanager.repository.FolderRepository;
+import com.revature.passwordmanager.repository.NotificationRepository;
+import com.revature.passwordmanager.dto.response.DashboardResponse;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import com.revature.passwordmanager.util.EncryptionUtil;
+import org.springframework.transaction.annotation.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import javax.crypto.SecretKey;
+import java.util.List;
+import lombok.extern.slf4j.Slf4j;
+
+<span class="fc" id="L26">@Slf4j</span>
+@Service
+<span class="fc" id="L28">@RequiredArgsConstructor</span>
+public class UserService {
+
+  private final UserRepository userRepository;
+  private final VaultEntryRepository vaultEntryRepository;
+  private final CategoryRepository categoryRepository;
+  private final FolderRepository folderRepository;
+  private final NotificationRepository notificationRepository;
+  private final PasswordEncoder passwordEncoder;
+  private final com.revature.passwordmanager.service.security.SecurityAuditService securityAuditService;
+  private final EncryptionService encryptionService;
+  private final EncryptionUtil encryptionUtil;
+
+  @Transactional(readOnly = true)
+  public UserResponse getUserProfile(String username) {
+<span class="fc" id="L43">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L45">    return UserResponse.builder()</span>
+<span class="fc" id="L46">        .id(user.getId())</span>
+<span class="fc" id="L47">        .email(user.getEmail())</span>
+<span class="fc" id="L48">        .username(user.getUsername())</span>
+<span class="fc" id="L49">        .name(user.getName())</span>
+<span class="fc" id="L50">        .phoneNumber(user.getPhoneNumber())</span>
+<span class="fc" id="L51">        .is2faEnabled(user.is2faEnabled())</span>
+<span class="fc" id="L52">        .createdAt(user.getCreatedAt())</span>
+<span class="fc" id="L53">        .deletionScheduledAt(user.getDeletionScheduledAt())</span>
+<span class="fc" id="L54">        .build();</span>
+  }
+
+  @Transactional
+  public UserResponse updateProfile(String username, UpdateProfileRequest request) {
+<span class="fc" id="L59">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">    if (request.getName() != null) {</span>
+<span class="fc" id="L62">      user.setName(request.getName());</span>
+    }
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">    if (request.getPhoneNumber() != null) {</span>
+<span class="fc" id="L65">      user.setPhoneNumber(request.getPhoneNumber());</span>
+    }
+<span class="pc bpc" id="L67" title="3 of 4 branches missed.">    if (request.getEmail() != null &amp;&amp; !request.getEmail().equals(user.getEmail())) {</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">      if (userRepository.existsByEmail(request.getEmail())) {</span>
+<span class="nc" id="L69">        throw new IllegalArgumentException(&quot;Email address is already in use by another account.&quot;);</span>
+      }
+<span class="nc" id="L71">      user.setEmail(request.getEmail());</span>
+    }
+
+<span class="fc" id="L74">    User savedUser = userRepository.save(user);</span>
+
+<span class="fc" id="L76">    return UserResponse.builder()</span>
+<span class="fc" id="L77">        .id(savedUser.getId())</span>
+<span class="fc" id="L78">        .email(savedUser.getEmail())</span>
+<span class="fc" id="L79">        .username(savedUser.getUsername())</span>
+<span class="fc" id="L80">        .name(savedUser.getName())</span>
+<span class="fc" id="L81">        .phoneNumber(savedUser.getPhoneNumber())</span>
+<span class="fc" id="L82">        .is2faEnabled(savedUser.is2faEnabled())</span>
+<span class="fc" id="L83">        .createdAt(savedUser.getCreatedAt())</span>
+<span class="fc" id="L84">        .build();</span>
+  }
+
+  @Transactional
+  public void changeMasterPassword(String username, ChangePasswordRequest request) {
+<span class="fc" id="L89">    log.info(&quot;Starting master password change for user: {}&quot;, username);</span>
+<span class="fc" id="L90">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc bfc" id="L92" title="All 2 branches covered.">    if (!passwordEncoder.matches(request.getOldPassword(), user.getMasterPasswordHash())) {</span>
+<span class="fc" id="L93">      log.warn(&quot;Old password verification failed for user: {}&quot;, username);</span>
+<span class="fc" id="L94">      throw new AuthenticationException(&quot;Invalid old password&quot;);</span>
+    }
+
+    // Derive the OLD encryption key from the current master password hash
+<span class="fc" id="L98">    SecretKey oldKey = encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+<span class="fc" id="L99">    log.info(&quot;Derived old encryption key for user: {}&quot;, username);</span>
+
+    // Update the master password hash to the NEW password
+<span class="fc" id="L102">    String newPasswordHash = passwordEncoder.encode(request.getNewPassword());</span>
+<span class="fc" id="L103">    String oldHashPrefix = user.getMasterPasswordHash().substring(0,</span>
+<span class="fc" id="L104">        Math.min(20, user.getMasterPasswordHash().length()));</span>
+<span class="fc" id="L105">    String newHashPrefix = newPasswordHash.substring(0, Math.min(20, newPasswordHash.length()));</span>
+<span class="fc" id="L106">    log.info(&quot;Updating password hash from [{}...] to [{}...]&quot;, oldHashPrefix, newHashPrefix);</span>
+<span class="fc" id="L107">    user.setMasterPasswordHash(newPasswordHash);</span>
+
+    // Derive the NEW encryption key from the new master password hash
+<span class="fc" id="L110">    SecretKey newKey = encryptionUtil.deriveKey(newPasswordHash, user.getSalt());</span>
+<span class="fc" id="L111">    log.info(&quot;Derived new encryption key for user: {}&quot;, username);</span>
+
+    // Re-encrypt all vault entries with the new key
+<span class="fc" id="L114">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(user.getId());</span>
+<span class="fc" id="L115">    log.info(&quot;Found {} vault entries to re-encrypt for user: {}&quot;, entries.size(), username);</span>
+
+<span class="fc" id="L117">    int successCount = 0;</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">    for (VaultEntry entry : entries) {</span>
+      try {
+        // Decrypt with old key
+<span class="nc" id="L121">        String decryptedPassword = encryptionService.decrypt(entry.getPassword(), oldKey);</span>
+<span class="nc" id="L122">        String decryptedUsername = encryptionService.decrypt(entry.getUsername(), oldKey);</span>
+<span class="nc bnc" id="L123" title="All 4 branches missed.">        String decryptedNotes = entry.getNotes() != null &amp;&amp; !entry.getNotes().isEmpty()</span>
+<span class="nc" id="L124">            ? encryptionService.decrypt(entry.getNotes(), oldKey)</span>
+<span class="nc" id="L125">            : &quot;&quot;;</span>
+
+        // Re-encrypt with new key
+<span class="nc" id="L128">        entry.setPassword(encryptionService.encrypt(decryptedPassword, newKey));</span>
+<span class="nc" id="L129">        entry.setUsername(encryptionService.encrypt(decryptedUsername, newKey));</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">        if (entry.getNotes() != null &amp;&amp; !entry.getNotes().isEmpty()) {</span>
+<span class="nc" id="L131">          entry.setNotes(encryptionService.encrypt(decryptedNotes, newKey));</span>
+        }
+<span class="nc" id="L133">        successCount++;</span>
+<span class="nc" id="L134">      } catch (Exception e) {</span>
+<span class="nc" id="L135">        log.error(&quot;Failed to re-encrypt vault entry {} ({}): {}&quot;, entry.getId(), entry.getTitle(), e.getMessage());</span>
+<span class="nc" id="L136">        throw new RuntimeException(&quot;Failed to re-encrypt vault entry: &quot; + entry.getTitle(), e);</span>
+<span class="nc" id="L137">      }</span>
+<span class="nc" id="L138">    }</span>
+
+<span class="fc" id="L140">    log.info(&quot;Successfully re-encrypted {}/{} entries for user: {}&quot;, successCount, entries.size(), username);</span>
+
+    // Save all re-encrypted entries
+<span class="fc" id="L143">    vaultEntryRepository.saveAll(entries);</span>
+<span class="fc" id="L144">    log.info(&quot;Saved all re-encrypted entries for user: {}&quot;, username);</span>
+
+    // Save the user with new password hash
+<span class="fc" id="L147">    userRepository.save(user);</span>
+<span class="fc" id="L148">    log.info(&quot;Master password change completed successfully for user: {}&quot;, username);</span>
+<span class="fc" id="L149">  }</span>
+
+  @Transactional
+  public DashboardResponse getDashboardData(String username) {
+<span class="nc" id="L153">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="nc" id="L155">    int vaultEntries = (int) vaultEntryRepository.countByUserAndIsDeletedFalse(user);</span>
+<span class="nc" id="L156">    int favorites = (int) vaultEntryRepository.countByUserAndIsFavoriteTrue(user);</span>
+<span class="nc" id="L157">    int categories = (int) categoryRepository.countByUser(user);</span>
+<span class="nc" id="L158">    int folders = (int) folderRepository.countByUser(user);</span>
+<span class="nc" id="L159">    int unreadNotifications = (int) notificationRepository.countByUserAndIsReadFalse(user);</span>
+
+<span class="nc" id="L161">    var auditReport = securityAuditService.generateAuditReport(username);</span>
+
+<span class="nc" id="L163">    return DashboardResponse.builder()</span>
+<span class="nc" id="L164">        .totalVaultEntries(vaultEntries)</span>
+<span class="nc" id="L165">        .totalCategories(categories)</span>
+<span class="nc" id="L166">        .totalFolders(folders)</span>
+<span class="nc" id="L167">        .totalFavorites(favorites)</span>
+<span class="nc" id="L168">        .weakPasswordsCount(auditReport.getWeakCount())</span>
+<span class="nc" id="L169">        .reusedPasswordsCount(auditReport.getReusedCount())</span>
+<span class="nc" id="L170">        .oldPasswordsCount(auditReport.getOldCount())</span>
+<span class="nc" id="L171">        .unreadNotifications(unreadNotifications)</span>
+<span class="nc" id="L172">        .build();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

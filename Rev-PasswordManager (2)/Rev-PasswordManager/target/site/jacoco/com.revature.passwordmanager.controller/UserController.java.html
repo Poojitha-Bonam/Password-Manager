@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">UserController.java</span></div><h1>UserController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.request.AccountDeletionRequest;
+import com.revature.passwordmanager.service.user.AccountDeletionService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import com.revature.passwordmanager.dto.SecurityQuestionDTO;
+import com.revature.passwordmanager.dto.request.ChangePasswordRequest;
+import com.revature.passwordmanager.dto.request.UpdateSecurityQuestionsRequest;
+import com.revature.passwordmanager.dto.request.ToggleReadOnlyRequest;
+import com.revature.passwordmanager.dto.response.DashboardResponse;
+import com.revature.passwordmanager.dto.response.HeatmapResponse;
+import com.revature.passwordmanager.dto.response.MessageResponse;
+import com.revature.passwordmanager.dto.response.UserResponse;
+import com.revature.passwordmanager.dto.response.UserSettingsResponse;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.user.SecurityQuestion;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.service.analytics.AccessHeatmapService;
+import com.revature.passwordmanager.service.auth.SecurityQuestionService;
+import com.revature.passwordmanager.service.user.UserService;
+import com.revature.passwordmanager.service.user.UserSettingsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping(&quot;/api/users&quot;)
+<span class="fc" id="L37">@RequiredArgsConstructor</span>
+public class UserController {
+
+  private final AccountDeletionService accountDeletionService;
+  private final UserService userService;
+  private final UserRepository userRepository;
+  private final SecurityQuestionService securityQuestionService;
+  private final PasswordEncoder passwordEncoder;
+  private final AccessHeatmapService accessHeatmapService;
+  private final UserSettingsService userSettingsService;
+
+  @GetMapping(&quot;/profile&quot;)
+  public ResponseEntity&lt;UserResponse&gt; getProfile() {
+<span class="fc" id="L50">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L51">    return ResponseEntity.ok(userService.getUserProfile(username));</span>
+  }
+
+  @PutMapping(&quot;/profile&quot;)
+  public ResponseEntity&lt;UserResponse&gt; updateProfile(
+      @Valid @RequestBody com.revature.passwordmanager.dto.request.UpdateProfileRequest request) {
+<span class="fc" id="L57">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L58">    return ResponseEntity.ok(userService.updateProfile(username, request));</span>
+  }
+
+  @PutMapping(&quot;/change-password&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; changePassword(
+      @Valid @RequestBody ChangePasswordRequest request) {
+<span class="fc" id="L64">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L65">    userService.changeMasterPassword(username, request);</span>
+<span class="fc" id="L66">    return ResponseEntity.ok(new MessageResponse(&quot;Password changed successfully&quot;));</span>
+  }
+
+  @DeleteMapping(&quot;/account&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; deleteAccount(@Valid @RequestBody AccountDeletionRequest request) {
+<span class="fc" id="L71">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L72">    accountDeletionService.scheduleAccountDeletion(username, request);</span>
+<span class="fc" id="L73">    return ResponseEntity.ok(</span>
+        new MessageResponse(
+            &quot;Account scheduled for deletion in 30 days. You can cancel this action by logging in and using the cancel endpoint.&quot;));
+  }
+
+  @PostMapping(&quot;/account/cancel-deletion&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; cancelDeletion() {
+<span class="fc" id="L80">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L81">    accountDeletionService.cancelAccountDeletion(username);</span>
+<span class="fc" id="L82">    return ResponseEntity.ok(new MessageResponse(&quot;Account deletion cancelled.&quot;));</span>
+  }
+
+  @GetMapping(&quot;/security-questions&quot;)
+  public ResponseEntity&lt;List&lt;SecurityQuestionDTO&gt;&gt; getSecurityQuestions() {
+<span class="fc" id="L87">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L88">    User user = userRepository.findByUsername(username)</span>
+<span class="fc" id="L89">        .orElseThrow(</span>
+<span class="nc" id="L90">            () -&gt; new ResourceNotFoundException(&quot;User&quot;, &quot;username&quot;, username));</span>
+
+<span class="fc" id="L92">    List&lt;SecurityQuestion&gt; questions = securityQuestionService</span>
+<span class="fc" id="L93">        .getSecurityQuestions(user);</span>
+
+<span class="fc" id="L95">    List&lt;SecurityQuestionDTO&gt; questionDTOs = questions.stream()</span>
+<span class="fc" id="L96">        .map(q -&gt; new SecurityQuestionDTO(q.getQuestionText(), &quot;&quot;))</span>
+
+<span class="fc" id="L98">        .collect(Collectors.toList());</span>
+
+<span class="fc" id="L100">    return ResponseEntity.ok(questionDTOs);</span>
+  }
+
+  @PutMapping(&quot;/security-questions&quot;)
+  public ResponseEntity&lt;Void&gt; updateSecurityQuestions(
+      @Valid @RequestBody UpdateSecurityQuestionsRequest request) {
+<span class="fc" id="L106">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L107">    User user = userRepository.findByUsername(username)</span>
+<span class="fc" id="L108">        .orElseThrow(</span>
+<span class="nc" id="L109">            () -&gt; new ResourceNotFoundException(&quot;User&quot;, &quot;username&quot;, username));</span>
+
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">    if (!passwordEncoder.matches(request.getMasterPassword(), user.getMasterPasswordHash())) {</span>
+<span class="nc" id="L112">      throw new AuthenticationException(&quot;Invalid master password&quot;);</span>
+    }
+
+<span class="fc" id="L115">    securityQuestionService.saveSecurityQuestions(user, request.getSecurityQuestions());</span>
+<span class="fc" id="L116">    return ResponseEntity.ok().build();</span>
+  }
+
+  @GetMapping(&quot;/activity-heatmap&quot;)
+  public ResponseEntity&lt;HeatmapResponse&gt; getActivityHeatmap() {
+<span class="fc" id="L121">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L122">    return ResponseEntity.ok(accessHeatmapService.getAccessHeatmap(username));</span>
+  }
+
+  @GetMapping(&quot;/dashboard&quot;)
+  public ResponseEntity&lt;DashboardResponse&gt; getDashboard() {
+<span class="fc" id="L127">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L128">    return ResponseEntity.ok(userService.getDashboardData(username));</span>
+  }
+
+  @PutMapping(&quot;/read-only-mode&quot;)
+  public ResponseEntity&lt;UserSettingsResponse&gt; toggleReadOnlyMode(
+      @Valid @RequestBody ToggleReadOnlyRequest request) {
+<span class="fc" id="L134">    String username = SecurityContextHolder.getContext().getAuthentication().getName();</span>
+<span class="fc" id="L135">    return ResponseEntity.ok(userSettingsService.toggleReadOnlyMode(username, request.getReadOnlyMode()));</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

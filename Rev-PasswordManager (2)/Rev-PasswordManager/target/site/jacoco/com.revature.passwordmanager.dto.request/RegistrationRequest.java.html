@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RegistrationRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.dto.request</a> &gt; <span class="el_source">RegistrationRequest.java</span></div><h1>RegistrationRequest.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.dto.request;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+import java.util.List;
+import com.revature.passwordmanager.dto.SecurityQuestionDTO;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+<span class="pc bpc" id="L13" title="34 of 46 branches missed.">@Data</span>
+@Schema(description = &quot;Request object for registering a new user&quot;)
+public class RegistrationRequest {
+
+  @Schema(description = &quot;User's email address&quot;, example = &quot;jane.doe@example.com&quot;)
+  @NotBlank(message = &quot;Email is required&quot;)
+  @Email(message = &quot;Invalid email format&quot;)
+<span class="fc" id="L20">  private String email;</span>
+
+  @Schema(description = &quot;User's chosen display name or login handle&quot;, example = &quot;jane_doe22&quot;)
+  @NotBlank(message = &quot;Username is required&quot;)
+  @Size(min = 3, max = 50, message = &quot;Username must be between 3 and 50 characters&quot;)
+<span class="fc" id="L25">  private String username;</span>
+
+  @Schema(description = &quot;The highly secure master password for the vault&quot;, example = &quot;MySuperSecretPassword456!&quot;)
+  @NotBlank(message = &quot;Master password is required&quot;)
+  @Size(min = 12, message = &quot;Master password must be at least 12 characters long&quot;)
+<span class="fc" id="L30">  private String masterPassword;</span>
+
+  @Schema(description = &quot;Array of 3 security questions/answers for account recovery&quot;)
+  @jakarta.validation.Valid
+  @NotNull(message = &quot;Security questions are required&quot;)
+  @Size(min = 3, max = 3, message = &quot;You must provide exactly 3 security questions&quot;)
+<span class="fc" id="L36">  private List&lt;SecurityQuestionDTO&gt; securityQuestions;</span>
+
+  @Schema(description = &quot;Optional hint to remember the master password&quot;, example = &quot;My favorite childhood pet&quot;)
+  @Size(max = 500, message = &quot;Password hint must not exceed 500 characters&quot;)
+<span class="fc" id="L40">  private String passwordHint;</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

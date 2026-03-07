@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">SecurityController.java</span></div><h1>SecurityController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.SecurityAlertDTO;
+import com.revature.passwordmanager.dto.response.AuditLogResponse;
+import com.revature.passwordmanager.dto.response.LoginHistoryResponse;
+import com.revature.passwordmanager.dto.response.MessageResponse;
+import com.revature.passwordmanager.dto.response.SecurityAuditResponse;
+import com.revature.passwordmanager.service.security.AuditLogService;
+import com.revature.passwordmanager.service.security.LoginAttemptService;
+import com.revature.passwordmanager.service.security.SecurityAlertService;
+import com.revature.passwordmanager.service.security.SecurityAuditService;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping(&quot;/api/security&quot;)
+<span class="fc" id="L22">@RequiredArgsConstructor</span>
+public class SecurityController {
+
+  private final AuditLogService auditLogService;
+  private final LoginAttemptService loginAttemptService;
+  private final SecurityAlertService securityAlertService;
+  private final SecurityAuditService securityAuditService;
+
+  @GetMapping(&quot;/audit-logs&quot;)
+  public ResponseEntity&lt;List&lt;AuditLogResponse&gt;&gt; getAuditLogs() {
+<span class="fc" id="L32">    String username = getCurrentUsername();</span>
+<span class="fc" id="L33">    return ResponseEntity.ok(auditLogService.getAuditLogs(username));</span>
+  }
+
+  @GetMapping(&quot;/login-history&quot;)
+  public ResponseEntity&lt;List&lt;LoginHistoryResponse&gt;&gt; getLoginHistory() {
+<span class="fc" id="L38">    String username = getCurrentUsername();</span>
+<span class="fc" id="L39">    return ResponseEntity.ok(loginAttemptService.getLoginHistory(username));</span>
+  }
+
+  @GetMapping(&quot;/alerts&quot;)
+  public ResponseEntity&lt;List&lt;SecurityAlertDTO&gt;&gt; getAlerts() {
+<span class="fc" id="L44">    String username = getCurrentUsername();</span>
+<span class="fc" id="L45">    return ResponseEntity.ok(securityAlertService.getAlerts(username));</span>
+  }
+
+  @PutMapping(&quot;/alerts/{id}/read&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; markAlertAsRead(@PathVariable Long id) {
+<span class="fc" id="L50">    String username = getCurrentUsername();</span>
+<span class="fc" id="L51">    securityAlertService.markAsRead(username, id);</span>
+<span class="fc" id="L52">    return ResponseEntity.ok(new MessageResponse(&quot;Alert marked as read&quot;));</span>
+  }
+
+  @DeleteMapping(&quot;/alerts/{id}&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; deleteAlert(@PathVariable Long id) {
+<span class="fc" id="L57">    String username = getCurrentUsername();</span>
+<span class="fc" id="L58">    securityAlertService.deleteAlert(username, id);</span>
+<span class="fc" id="L59">    return ResponseEntity.ok(new MessageResponse(&quot;Alert deleted&quot;));</span>
+  }
+
+  @GetMapping(&quot;/audit-report&quot;)
+  public ResponseEntity&lt;SecurityAuditResponse&gt; getAuditReport() {
+<span class="fc" id="L64">    String username = getCurrentUsername();</span>
+<span class="fc" id="L65">    return ResponseEntity.ok(securityAuditService.generateAuditReport(username));</span>
+  }
+
+  @GetMapping(&quot;/weak-passwords&quot;)
+  public ResponseEntity&lt;List&lt;SecurityAuditResponse.VaultEntrySummary&gt;&gt; getWeakPasswords() {
+<span class="fc" id="L70">    String username = getCurrentUsername();</span>
+<span class="fc" id="L71">    return ResponseEntity.ok(securityAuditService.getWeakPasswords(username));</span>
+  }
+
+  @GetMapping(&quot;/reused-passwords&quot;)
+  public ResponseEntity&lt;List&lt;SecurityAuditResponse.VaultEntrySummary&gt;&gt; getReusedPasswords() {
+<span class="fc" id="L76">    String username = getCurrentUsername();</span>
+<span class="fc" id="L77">    return ResponseEntity.ok(securityAuditService.getReusedPasswords(username));</span>
+  }
+
+  @GetMapping(&quot;/old-passwords&quot;)
+  public ResponseEntity&lt;List&lt;SecurityAuditResponse.VaultEntrySummary&gt;&gt; getOldPasswords() {
+<span class="fc" id="L82">    String username = getCurrentUsername();</span>
+<span class="fc" id="L83">    return ResponseEntity.ok(securityAuditService.getOldPasswords(username));</span>
+  }
+
+  @PostMapping(&quot;/analyze-vault&quot;)
+  public ResponseEntity&lt;SecurityAuditResponse&gt; analyzeVault() {
+<span class="fc" id="L88">    String username = getCurrentUsername();</span>
+
+<span class="fc" id="L90">    return ResponseEntity.ok(securityAuditService.generateAuditReport(username));</span>
+  }
+
+  private String getCurrentUsername() {
+<span class="fc" id="L94">    return SecurityContextHolder.getContext().getAuthentication().getName();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

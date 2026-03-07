@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GlobalExceptionHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.exception</a> &gt; <span class="el_source">GlobalExceptionHandler.java</span></div><h1>GlobalExceptionHandler.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.exception;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.WebRequest;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+@ControllerAdvice
+<span class="fc" id="L20">public class GlobalExceptionHandler {</span>
+
+<span class="fc" id="L22">  private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);</span>
+
+  @ExceptionHandler(ResourceNotFoundException.class)
+  public ResponseEntity&lt;Object&gt; handleResourceNotFoundException(ResourceNotFoundException ex, WebRequest request) {
+<span class="fc" id="L26">    logger.error(&quot;Resource not found: {}&quot;, ex.getMessage());</span>
+<span class="fc" id="L27">    return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);</span>
+  }
+
+  @ExceptionHandler(RateLimitExceededException.class)
+  public ResponseEntity&lt;Object&gt; handleRateLimitExceededException(RateLimitExceededException ex, WebRequest request) {
+<span class="nc" id="L32">    logger.warn(&quot;Rate limit exceeded: {}&quot;, ex.getMessage());</span>
+<span class="nc" id="L33">    return buildErrorResponse(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request);</span>
+  }
+
+  @ExceptionHandler(AuthenticationException.class)
+  public ResponseEntity&lt;Object&gt; handleAuthenticationException(AuthenticationException ex, WebRequest request) {
+<span class="fc" id="L38">    logger.error(&quot;Authentication error: {}&quot;, ex.getMessage());</span>
+<span class="fc" id="L39">    return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);</span>
+  }
+
+  @ExceptionHandler(BadCredentialsException.class)
+  public ResponseEntity&lt;Object&gt; handleBadCredentialsException(BadCredentialsException ex, WebRequest request) {
+<span class="nc" id="L44">    logger.error(&quot;Bad credentials: {}&quot;, ex.getMessage());</span>
+<span class="nc" id="L45">    return buildErrorResponse(HttpStatus.UNAUTHORIZED, &quot;Invalid username or password&quot;, request);</span>
+  }
+
+  @ExceptionHandler(AccessDeniedException.class)
+  public ResponseEntity&lt;Object&gt; handleAccessDeniedException(AccessDeniedException ex, WebRequest request) {
+<span class="nc" id="L50">    logger.error(&quot;Access denied: {}&quot;, ex.getMessage());</span>
+<span class="nc" id="L51">    return buildErrorResponse(HttpStatus.FORBIDDEN, &quot;You do not have permission to access this resource&quot;, request);</span>
+  }
+
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity&lt;Object&gt; handleIllegalArgumentException(IllegalArgumentException ex, WebRequest request) {
+<span class="fc" id="L56">    logger.error(&quot;Illegal argument: {}&quot;, ex.getMessage());</span>
+<span class="fc" id="L57">    return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);</span>
+  }
+
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  public ResponseEntity&lt;Object&gt; handleValidationExceptions(MethodArgumentNotValidException ex) {
+<span class="fc" id="L62">    Map&lt;String, String&gt; errors = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L63">    ex.getBindingResult().getAllErrors().forEach((error) -&gt; {</span>
+<span class="fc" id="L64">      String fieldName = ((FieldError) error).getField();</span>
+<span class="fc" id="L65">      String errorMessage = error.getDefaultMessage();</span>
+<span class="fc" id="L66">      errors.put(fieldName, errorMessage);</span>
+<span class="fc" id="L67">    });</span>
+
+<span class="fc" id="L69">    Map&lt;String, Object&gt; body = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L70">    body.put(&quot;timestamp&quot;, LocalDateTime.now());</span>
+<span class="fc" id="L71">    body.put(&quot;status&quot;, HttpStatus.BAD_REQUEST.value());</span>
+<span class="fc" id="L72">    body.put(&quot;error&quot;, &quot;Validation Failed&quot;);</span>
+<span class="fc" id="L73">    body.put(&quot;details&quot;, errors);</span>
+
+<span class="fc" id="L75">    return new ResponseEntity&lt;&gt;(body, HttpStatus.BAD_REQUEST);</span>
+  }
+
+  @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity&lt;Object&gt; handleMethodNotSupported(
+      org.springframework.web.HttpRequestMethodNotSupportedException ex, WebRequest request) {
+<span class="nc" id="L81">    logger.error(&quot;Method not allowed: {}&quot;, ex.getMessage());</span>
+<span class="nc" id="L82">    return buildErrorResponse(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), request);</span>
+  }
+
+  @ExceptionHandler(org.springframework.web.bind.MissingServletRequestParameterException.class)
+  public ResponseEntity&lt;Object&gt; handleMissingParams(
+      org.springframework.web.bind.MissingServletRequestParameterException ex, WebRequest request) {
+<span class="nc" id="L88">    logger.error(&quot;Missing parameter: {}&quot;, ex.getMessage());</span>
+<span class="nc" id="L89">    return buildErrorResponse(HttpStatus.BAD_REQUEST, &quot;Missing required parameter: &quot; + ex.getParameterName(), request);</span>
+  }
+
+  @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+  public ResponseEntity&lt;Object&gt; handleMessageNotReadable(
+      org.springframework.http.converter.HttpMessageNotReadableException ex, WebRequest request) {
+<span class="nc" id="L95">    logger.error(&quot;Request body not readable: {}&quot;, ex.getMessage(), ex);</span>
+<span class="nc" id="L96">    String message = &quot;Invalid request body format&quot;;</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    if (ex.getCause() != null) {</span>
+<span class="nc" id="L98">      message += &quot;: &quot; + ex.getCause().getMessage();</span>
+    }
+<span class="nc" id="L100">    return buildErrorResponse(HttpStatus.BAD_REQUEST, message, request);</span>
+  }
+
+  @ExceptionHandler(Exception.class)
+  public ResponseEntity&lt;Object&gt; handleGlobalException(Exception ex, WebRequest request) {
+<span class="fc" id="L105">    logger.error(&quot;Unexpected error: &quot;, ex);</span>
+<span class="fc" id="L106">    return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR,</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        &quot;Error: &quot; + ex.getMessage() + (ex.getCause() != null ? &quot; Cause: &quot; + ex.getCause().getMessage() : &quot;&quot;), request);</span>
+  }
+
+  private ResponseEntity&lt;Object&gt; buildErrorResponse(HttpStatus status, String message, WebRequest request) {
+<span class="fc" id="L111">    Map&lt;String, Object&gt; body = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L112">    body.put(&quot;timestamp&quot;, LocalDateTime.now());</span>
+<span class="fc" id="L113">    body.put(&quot;status&quot;, status.value());</span>
+<span class="fc" id="L114">    body.put(&quot;error&quot;, status.getReasonPhrase());</span>
+<span class="fc" id="L115">    body.put(&quot;message&quot;, message);</span>
+<span class="fc" id="L116">    body.put(&quot;path&quot;, request.getDescription(false).replace(&quot;uri=&quot;, &quot;&quot;));</span>
+
+<span class="fc" id="L118">    return new ResponseEntity&lt;&gt;(body, status);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

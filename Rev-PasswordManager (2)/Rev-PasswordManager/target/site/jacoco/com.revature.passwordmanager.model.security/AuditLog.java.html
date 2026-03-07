@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditLog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.security</a> &gt; <span class="el_source">AuditLog.java</span></div><h1>AuditLog.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.security;
+
+import com.revature.passwordmanager.model.user.User;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = &quot;audit_logs&quot;)
+<span class="pc bpc" id="L14" title="41 of 54 branches missed.">@Data</span>
+<span class="fc" id="L15">@Builder</span>
+<span class="fc" id="L16">@NoArgsConstructor</span>
+<span class="fc" id="L17">@AllArgsConstructor</span>
+public class AuditLog {
+
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+<span class="fc" id="L22">  private Long id;</span>
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = &quot;user_id&quot;, nullable = false)
+<span class="fc" id="L26">  private User user;</span>
+
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 50, columnDefinition = &quot;VARCHAR(50)&quot;)
+<span class="fc" id="L30">  private AuditAction action;</span>
+
+  @Column(length = 500)
+<span class="fc" id="L33">  private String details;</span>
+
+  @Column(name = &quot;ip_address&quot;, length = 45)
+<span class="fc" id="L36">  private String ipAddress;</span>
+
+  @Column(nullable = false)
+<span class="fc" id="L39">  private LocalDateTime timestamp;</span>
+
+<span class="fc" id="L41">  public enum AuditAction {</span>
+<span class="fc" id="L42">    LOGIN,</span>
+<span class="fc" id="L43">    LOGIN_FAILED,</span>
+<span class="fc" id="L44">    LOGOUT,</span>
+<span class="fc" id="L45">    ENTRY_CREATED,</span>
+<span class="fc" id="L46">    ENTRY_UPDATED,</span>
+<span class="fc" id="L47">    ENTRY_DELETED,</span>
+<span class="fc" id="L48">    PASSWORD_VIEWED,</span>
+<span class="fc" id="L49">    ENTRY_RESTORED,</span>
+<span class="fc" id="L50">    VAULT_EXPORTED,</span>
+    // Feature 33 — Dashboard
+<span class="fc" id="L52">    DASHBOARD_VIEWED,</span>
+    // Feature 34 — Breach Monitor
+<span class="fc" id="L54">    BREACH_SCAN_RUN,</span>
+<span class="fc" id="L55">    BREACH_DETECTED,</span>
+<span class="fc" id="L56">    BREACH_RESOLVED,</span>
+    // Feature 35 — Secure Sharing
+<span class="fc" id="L58">    SHARE_CREATED,</span>
+<span class="fc" id="L59">    SHARE_ACCESSED,</span>
+<span class="fc" id="L60">    SHARE_REVOKED,</span>
+    // Feature 37 — Vault Timeline
+<span class="fc" id="L62">    TIMELINE_VIEWED</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

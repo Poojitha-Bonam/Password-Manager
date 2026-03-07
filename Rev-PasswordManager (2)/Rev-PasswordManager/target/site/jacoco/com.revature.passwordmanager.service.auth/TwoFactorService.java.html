@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TwoFactorService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.auth</a> &gt; <span class="el_source">TwoFactorService.java</span></div><h1>TwoFactorService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.auth;
+
+import com.revature.passwordmanager.dto.response.TwoFactorSetupResponse;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import com.revature.passwordmanager.model.auth.TwoFactorAuth;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.repository.TwoFactorAuthRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.service.security.SecurityAlertService;
+import com.revature.passwordmanager.model.security.SecurityAlert.AlertType;
+import com.revature.passwordmanager.model.security.SecurityAlert.Severity;
+import com.revature.passwordmanager.util.TOTPUtil;
+import dev.samstevens.totp.exceptions.QrGenerationException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+@Service
+<span class="fc" id="L25">@RequiredArgsConstructor</span>
+public class TwoFactorService {
+
+  private final TwoFactorAuthRepository twoFactorAuthRepository;
+  private final UserRepository userRepository;
+  private final TOTPUtil totpUtil;
+  private final OtpService otpService;
+  private final SecurityAlertService securityAlertService;
+
+<span class="fc" id="L34">  private static final SecureRandom secureRandom = new SecureRandom();</span>
+  private static final String BASE32_ALPHABET = &quot;ABCDEFGHIJKLMNOPQRSTUVWXYZ234567&quot;;
+
+  @Transactional
+  public TwoFactorSetupResponse setup2FA(User user) {
+<span class="fc" id="L39">    TwoFactorAuth twoFactorAuth = twoFactorAuthRepository.findByUser(user)</span>
+<span class="fc" id="L40">        .orElse(TwoFactorAuth.builder().user(user).build());</span>
+
+<span class="fc" id="L42">    String secretKey = totpUtil.generateSecret();</span>
+<span class="fc" id="L43">    twoFactorAuth.setSecretKey(secretKey);</span>
+<span class="fc" id="L44">    twoFactorAuth.setEnabled(false);</span>
+
+<span class="fc" id="L46">    twoFactorAuthRepository.save(twoFactorAuth);</span>
+
+    try {
+<span class="fc" id="L49">      String qrCodeUrl = totpUtil.getQrCodeUrl(secretKey, user.getEmail());</span>
+<span class="fc" id="L50">      return TwoFactorSetupResponse.builder()</span>
+<span class="fc" id="L51">          .secretKey(secretKey)</span>
+<span class="fc" id="L52">          .qrCodeUrl(qrCodeUrl)</span>
+<span class="fc" id="L53">          .build();</span>
+<span class="nc" id="L54">    } catch (QrGenerationException e) {</span>
+<span class="nc" id="L55">      throw new AuthenticationException(&quot;Failed to generate QR code for 2FA setup&quot;);</span>
+    }
+  }
+
+  @Transactional
+  public void verifySetup(User user, String code) {
+<span class="fc" id="L61">    TwoFactorAuth twoFactorAuth = twoFactorAuthRepository.findByUser(user)</span>
+<span class="pc" id="L62">        .orElseThrow(() -&gt; new AuthenticationException(&quot;2FA setup not initiated&quot;));</span>
+
+<span class="fc bfc" id="L64" title="All 2 branches covered.">    if (totpUtil.verifyCode(twoFactorAuth.getSecretKey(), code)) {</span>
+<span class="fc" id="L65">      twoFactorAuth.setEnabled(true);</span>
+<span class="fc" id="L66">      twoFactorAuth.setRecoveryCodes(generateRecoveryCodes());</span>
+<span class="fc" id="L67">      twoFactorAuthRepository.save(twoFactorAuth);</span>
+
+<span class="fc" id="L69">      user.set2faEnabled(true);</span>
+<span class="fc" id="L70">      userRepository.save(user);</span>
+
+<span class="fc" id="L72">      securityAlertService.createAlert(user.getUsername(),</span>
+          AlertType.TWO_FA_ENABLED,
+          &quot;Two-Factor Authentication Enabled&quot;,
+          &quot;2FA has been successfully enabled for your account&quot;,
+          Severity.LOW);
+    } else {
+<span class="fc" id="L78">      throw new AuthenticationException(&quot;Invalid 2FA code&quot;);</span>
+    }
+<span class="fc" id="L80">  }</span>
+
+  @Transactional
+  public void disable2FA(User user) {
+<span class="fc" id="L84">    TwoFactorAuth twoFactorAuth = twoFactorAuthRepository.findByUser(user)</span>
+<span class="pc" id="L85">        .orElseThrow(() -&gt; new AuthenticationException(&quot;2FA not set up for this user&quot;));</span>
+
+<span class="fc" id="L87">    user.set2faEnabled(false);</span>
+<span class="fc" id="L88">    userRepository.save(user);</span>
+
+<span class="fc" id="L90">    twoFactorAuthRepository.delete(twoFactorAuth);</span>
+
+<span class="fc" id="L92">    securityAlertService.createAlert(user.getUsername(),</span>
+        AlertType.TWO_FA_DISABLED,
+        &quot;Two-Factor Authentication Disabled&quot;,
+        &quot;2FA has been disabled for your account. If you did not make this change, secure your account immediately.&quot;,
+        Severity.HIGH);
+<span class="fc" id="L97">  }</span>
+
+  @Transactional
+  public boolean verifyCode(User user, String code) {
+
+<span class="fc" id="L102">    TwoFactorAuth twoFactorAuth = twoFactorAuthRepository.findByUser(user)</span>
+<span class="fc" id="L103">        .orElseThrow(() -&gt; new AuthenticationException(&quot;2FA not set up&quot;));</span>
+
+<span class="fc bfc" id="L105" title="All 2 branches covered.">    if (!twoFactorAuth.isEnabled()) {</span>
+<span class="fc" id="L106">      return false;</span>
+    }
+
+<span class="fc bfc" id="L109" title="All 2 branches covered.">    if (totpUtil.verifyCode(twoFactorAuth.getSecretKey(), code)) {</span>
+<span class="fc" id="L110">      return true;</span>
+    }
+
+<span class="fc bfc" id="L113" title="All 2 branches covered.">    if (twoFactorAuth.getRecoveryCodes().contains(code)) {</span>
+
+<span class="fc" id="L115">      twoFactorAuth.getRecoveryCodes().remove(code);</span>
+<span class="fc" id="L116">      twoFactorAuthRepository.save(twoFactorAuth);</span>
+<span class="fc" id="L117">      return true;</span>
+    }
+
+<span class="fc" id="L120">    return false;</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;String&gt; getRecoveryCodes(User user) {
+<span class="nc" id="L125">    TwoFactorAuth twoFactorAuth = twoFactorAuthRepository.findByUser(user)</span>
+<span class="nc" id="L126">        .orElseThrow(() -&gt; new AuthenticationException(&quot;2FA not set up&quot;));</span>
+
+<span class="nc" id="L128">    return twoFactorAuth.getRecoveryCodes();</span>
+  }
+
+  @Transactional
+  public List&lt;String&gt; regenerateRecoveryCodes(User user) {
+<span class="fc" id="L133">    TwoFactorAuth twoFactorAuth = twoFactorAuthRepository.findByUser(user)</span>
+<span class="pc" id="L134">        .orElseThrow(() -&gt; new AuthenticationException(&quot;2FA not set up&quot;));</span>
+
+<span class="fc bfc" id="L136" title="All 2 branches covered.">    if (!twoFactorAuth.isEnabled()) {</span>
+<span class="fc" id="L137">      throw new AuthenticationException(&quot;Cannot regenerate codes for unverified 2FA setup&quot;);</span>
+    }
+
+<span class="fc" id="L140">    List&lt;String&gt; newCodes = generateRecoveryCodes();</span>
+<span class="fc" id="L141">    twoFactorAuth.setRecoveryCodes(newCodes);</span>
+<span class="fc" id="L142">    twoFactorAuthRepository.save(twoFactorAuth);</span>
+
+<span class="fc" id="L144">    securityAlertService.createAlert(user.getUsername(),</span>
+        AlertType.PASSWORD_CHANGED,
+        &quot;Backup Codes Regenerated&quot;,
+        &quot;Your 2FA backup codes have been regenerated. Your old codes will no longer work.&quot;,
+        Severity.MEDIUM);
+
+<span class="fc" id="L150">    return newCodes;</span>
+  }
+
+  private List&lt;String&gt; generateRecoveryCodes() {
+<span class="fc" id="L154">    return IntStream.range(0, 10)</span>
+<span class="fc" id="L155">        .mapToObj(i -&gt; generateRecoveryCode())</span>
+<span class="fc" id="L156">        .collect(Collectors.toList());</span>
+  }
+
+  private String generateRecoveryCode() {
+<span class="fc" id="L160">    StringBuilder sb = new StringBuilder(10);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">    for (int i = 0; i &lt; 10; i++) {</span>
+<span class="fc" id="L162">      sb.append(BASE32_ALPHABET.charAt(secureRandom.nextInt(BASE32_ALPHABET.length())));</span>
+    }
+<span class="fc" id="L164">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

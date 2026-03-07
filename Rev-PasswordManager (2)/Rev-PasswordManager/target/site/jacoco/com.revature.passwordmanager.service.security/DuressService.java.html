@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DuressService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.security</a> &gt; <span class="el_source">DuressService.java</span></div><h1>DuressService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.security;
+
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.security.SecureRandom;
+
+@Service
+<span class="fc" id="L17">@RequiredArgsConstructor</span>
+public class DuressService {
+
+  private final UserRepository userRepository;
+  private final PasswordEncoder passwordEncoder;
+<span class="fc" id="L22">  private static final SecureRandom RANDOM = new SecureRandom();</span>
+
+<span class="fc" id="L24">  private static final String[] DUMMY_TITLES = {</span>
+      &quot;Email&quot;, &quot;Social Media&quot;, &quot;Banking&quot;, &quot;Shopping&quot;, &quot;Streaming&quot;,
+      &quot;Cloud Storage&quot;, &quot;Gaming&quot;, &quot;News&quot;, &quot;Travel&quot;, &quot;Fitness&quot;
+  };
+<span class="fc" id="L28">  private static final String[] DUMMY_URLS = {</span>
+      &quot;https://mail.example.com&quot;, &quot;https://social.example.com&quot;,
+      &quot;https://bank.example.com&quot;, &quot;https://shop.example.com&quot;,
+      &quot;https://stream.example.com&quot;, &quot;https://cloud.example.com&quot;
+  };
+
+  @Transactional
+  public void setDuressPassword(String username, String duressPassword) {
+<span class="fc" id="L36">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L37">    user.setDuressPasswordHash(passwordEncoder.encode(duressPassword));</span>
+<span class="fc" id="L38">    userRepository.save(user);</span>
+<span class="fc" id="L39">  }</span>
+
+  public boolean isDuressLogin(String username, String password) {
+<span class="fc" id="L42">    User user = userRepository.findByUsername(username)</span>
+<span class="pc" id="L43">        .or(() -&gt; userRepository.findByEmail(username))</span>
+<span class="fc" id="L44">        .orElse(null);</span>
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">    if (user == null || user.getDuressPasswordHash() == null) {</span>
+<span class="fc" id="L46">      return false;</span>
+    }
+<span class="fc" id="L48">    return passwordEncoder.matches(password, user.getDuressPasswordHash());</span>
+  }
+
+  public List&lt;VaultEntry&gt; generateDummyVault(User user) {
+<span class="fc" id="L52">    List&lt;VaultEntry&gt; dummyEntries = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L54" title="All 2 branches covered.">    for (int i = 0; i &lt; 5; i++) {</span>
+<span class="fc" id="L55">      VaultEntry entry = VaultEntry.builder()</span>
+<span class="fc" id="L56">          .id((long) -(i + 1))</span>
+<span class="fc" id="L57">          .user(user)</span>
+<span class="fc" id="L58">          .title(DUMMY_TITLES[RANDOM.nextInt(DUMMY_TITLES.length)])</span>
+<span class="fc" id="L59">          .username(&quot;user&quot; + RANDOM.nextInt(1000) + &quot;@example.com&quot;)</span>
+<span class="fc" id="L60">          .password(&quot;***encrypted***&quot;)</span>
+<span class="fc" id="L61">          .websiteUrl(DUMMY_URLS[RANDOM.nextInt(DUMMY_URLS.length)])</span>
+<span class="fc" id="L62">          .notes(&quot;&quot;)</span>
+<span class="fc" id="L63">          .createdAt(LocalDateTime.now().minusDays(RANDOM.nextInt(365)))</span>
+<span class="fc" id="L64">          .updatedAt(LocalDateTime.now().minusDays(RANDOM.nextInt(30)))</span>
+<span class="fc" id="L65">          .build();</span>
+<span class="fc" id="L66">      dummyEntries.add(entry);</span>
+    }
+<span class="fc" id="L68">    return dummyEntries;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

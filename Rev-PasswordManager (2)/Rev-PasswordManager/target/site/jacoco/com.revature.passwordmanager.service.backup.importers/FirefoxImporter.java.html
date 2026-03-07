@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FirefoxImporter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.backup.importers</a> &gt; <span class="el_source">FirefoxImporter.java</span></div><h1>FirefoxImporter.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.backup.importers;
+
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import org.springframework.stereotype.Component;
+
+import javax.crypto.SecretKey;
+import java.io.BufferedReader;
+import java.io.StringReader;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Component
+<span class="fc" id="L16">public class FirefoxImporter implements Importer {</span>
+
+  @Override
+  public String getSupportedSource() {
+<span class="fc" id="L20">    return &quot;FIREFOX&quot;;</span>
+  }
+
+  @Override
+  public List&lt;VaultEntry&gt; parse(String csvData, User user, SecretKey key, EncryptionService encryptionService)
+      throws Exception {
+<span class="nc" id="L26">    List&lt;VaultEntry&gt; entries = new ArrayList&lt;&gt;();</span>
+
+<span class="nc" id="L28">    try (BufferedReader reader = new BufferedReader(new StringReader(csvData))) {</span>
+      @SuppressWarnings(&quot;unused&quot;) // Ignore header row
+<span class="nc" id="L30">      String header = reader.readLine();</span>
+      String line;
+<span class="nc bnc" id="L32" title="All 2 branches missed.">      while ((line = reader.readLine()) != null) {</span>
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        if (line.trim().isEmpty())</span>
+<span class="nc" id="L34">          continue;</span>
+
+        // Better Regex for CSV parsing (SonarQube fix: S5998 &amp; S5850)
+<span class="nc" id="L37">        String[] parts = line.split(&quot;,(?=(?:[^\&quot;]*\&quot;[^\&quot;]*\&quot;)*[^\&quot;]*$)&quot;, -1);</span>
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        for (int i = 0; i &lt; parts.length; i++) {</span>
+<span class="nc" id="L39">          parts[i] = parts[i].replaceAll(&quot;^\&quot;|\&quot;$&quot;, &quot;&quot;);</span>
+        }
+
+<span class="nc" id="L42">        VaultEntry entry = VaultEntry.builder()</span>
+<span class="nc" id="L43">            .user(user)</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">            .websiteUrl(parts.length &gt; 0 ? parts[0].trim() : &quot;&quot;)</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">            .username(parts.length &gt; 1 ? parts[1].trim() : &quot;&quot;)</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">            .password(parts.length &gt; 2 ? encryptionService.encrypt(parts[2].trim(), key) : &quot;&quot;)</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">            .title(parts.length &gt; 0 ? parts[0].trim() : &quot;Firefox Import&quot;)</span>
+<span class="nc" id="L48">            .createdAt(LocalDateTime.now())</span>
+<span class="nc" id="L49">            .updatedAt(LocalDateTime.now())</span>
+<span class="nc" id="L50">            .build();</span>
+<span class="nc" id="L51">        entries.add(entry);</span>
+<span class="nc" id="L52">      }</span>
+    }
+<span class="nc" id="L54">    return entries;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

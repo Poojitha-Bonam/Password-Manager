@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CategoryController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">CategoryController.java</span></div><h1>CategoryController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.CategoryDTO;
+import com.revature.passwordmanager.dto.request.CreateCategoryRequest;
+import com.revature.passwordmanager.dto.response.MessageResponse;
+import com.revature.passwordmanager.service.vault.CategoryService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import com.revature.passwordmanager.dto.response.VaultEntryResponse;
+import com.revature.passwordmanager.service.vault.VaultService;
+
+@RestController
+@RequestMapping(&quot;/api/categories&quot;)
+<span class="fc" id="L21">@RequiredArgsConstructor</span>
+public class CategoryController {
+
+  private final CategoryService categoryService;
+  private final VaultService vaultService;
+
+  @GetMapping
+  public ResponseEntity&lt;List&lt;CategoryDTO&gt;&gt; getAllCategories() {
+<span class="fc" id="L29">    String username = getCurrentUsername();</span>
+<span class="fc" id="L30">    List&lt;CategoryDTO&gt; categories = categoryService.getAllCategories(username);</span>
+<span class="fc" id="L31">    return ResponseEntity.ok(categories);</span>
+  }
+
+  @GetMapping(&quot;/{id}&quot;)
+  public ResponseEntity&lt;CategoryDTO&gt; getCategoryById(@PathVariable Long id) {
+<span class="fc" id="L36">    String username = getCurrentUsername();</span>
+<span class="fc" id="L37">    CategoryDTO category = categoryService.getCategoryById(id, username);</span>
+<span class="fc" id="L38">    return ResponseEntity.ok(category);</span>
+  }
+
+  @PostMapping
+  public ResponseEntity&lt;CategoryDTO&gt; createCategory(@Valid @RequestBody CreateCategoryRequest request) {
+<span class="fc" id="L43">    String username = getCurrentUsername();</span>
+<span class="fc" id="L44">    CategoryDTO category = categoryService.createCategory(request, username);</span>
+<span class="fc" id="L45">    return ResponseEntity.status(HttpStatus.CREATED).body(category);</span>
+  }
+
+  @PutMapping(&quot;/{id}&quot;)
+  public ResponseEntity&lt;CategoryDTO&gt; updateCategory(
+      @PathVariable Long id,
+      @Valid @RequestBody CreateCategoryRequest request) {
+<span class="fc" id="L52">    String username = getCurrentUsername();</span>
+<span class="fc" id="L53">    CategoryDTO category = categoryService.updateCategory(id, request, username);</span>
+<span class="fc" id="L54">    return ResponseEntity.ok(category);</span>
+  }
+
+  @DeleteMapping(&quot;/{id}&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; deleteCategory(@PathVariable Long id) {
+<span class="fc" id="L59">    String username = getCurrentUsername();</span>
+<span class="fc" id="L60">    categoryService.deleteCategory(id, username);</span>
+<span class="fc" id="L61">    return ResponseEntity.ok(new MessageResponse(&quot;Category deleted successfully&quot;));</span>
+  }
+
+  @GetMapping(&quot;/{id}/entries&quot;)
+  public ResponseEntity&lt;List&lt;VaultEntryResponse&gt;&gt; getEntriesInCategory(@PathVariable Long id) {
+<span class="fc" id="L66">    String username = getCurrentUsername();</span>
+<span class="fc" id="L67">    return ResponseEntity.ok(vaultService.getEntriesByCategory(username, id));</span>
+  }
+
+  private String getCurrentUsername() {
+<span class="fc" id="L71">    return SecurityContextHolder.getContext().getAuthentication().getName();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

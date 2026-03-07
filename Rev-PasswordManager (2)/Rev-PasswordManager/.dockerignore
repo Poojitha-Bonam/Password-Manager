@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+*.iml
+*.iws
+*.ipr
+.vscode
+
+# Build output
+target
+*.jar
+*.war
+*.ear
+
+# Logs
+logs
+*.log
+
+# Test files
+src/test
+
+# Documentation
+README.md
+*.md
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Node modules (if any in root)
+node_modules
+
+# Frontend directory
+frontend
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~

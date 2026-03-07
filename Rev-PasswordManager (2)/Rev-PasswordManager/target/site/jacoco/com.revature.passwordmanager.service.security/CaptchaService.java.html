@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CaptchaService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.security</a> &gt; <span class="el_source">CaptchaService.java</span></div><h1>CaptchaService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.security;
+
+import com.revature.passwordmanager.config.CaptchaConfig;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+@Service
+<span class="fc" id="L10">@RequiredArgsConstructor</span>
+public class CaptchaService {
+
+<span class="fc" id="L13">  private static final Logger logger = LoggerFactory.getLogger(CaptchaService.class);</span>
+
+  private final CaptchaConfig captchaConfig;
+  private final LoginAttemptService loginAttemptService;
+
+  public boolean isCaptchaRequired(String username) {
+<span class="fc bfc" id="L19" title="All 2 branches covered.">    if (!captchaConfig.isEnabled()) {</span>
+<span class="fc" id="L20">      return false;</span>
+    }
+<span class="fc" id="L22">    long recentFailures = loginAttemptService</span>
+<span class="fc" id="L23">        .getRecentFailedAttempts(username, 30);</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">    return recentFailures &gt;= captchaConfig.getFailedAttemptsThreshold();</span>
+  }
+
+  public boolean verifyCaptcha(String captchaToken) {
+<span class="fc bfc" id="L28" title="All 2 branches covered.">    if (!captchaConfig.isEnabled()) {</span>
+<span class="fc" id="L29">      return true;</span>
+    }
+
+<span class="fc bfc" id="L32" title="All 4 branches covered.">    if (captchaToken == null || captchaToken.isBlank()) {</span>
+<span class="fc" id="L33">      return false;</span>
+    }
+
+<span class="fc" id="L36">    logger.debug(&quot;CAPTCHA verification for token: {}&quot;, captchaToken.substring(0, Math.min(8, captchaToken.length())));</span>
+<span class="fc" id="L37">    return true;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

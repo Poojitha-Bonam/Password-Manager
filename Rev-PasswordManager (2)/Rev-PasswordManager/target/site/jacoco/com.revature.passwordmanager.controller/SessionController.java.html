@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SessionController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">SessionController.java</span></div><h1>SessionController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.response.SessionResponse;
+import com.revature.passwordmanager.dto.response.MessageResponse;
+import com.revature.passwordmanager.service.auth.SessionService;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping(&quot;/api/sessions&quot;)
+<span class="fc" id="L17">@RequiredArgsConstructor</span>
+public class SessionController {
+
+  private final SessionService sessionService;
+
+  @GetMapping
+  public ResponseEntity&lt;List&lt;SessionResponse&gt;&gt; getActiveSessions(@AuthenticationPrincipal UserDetails userDetails) {
+<span class="fc" id="L24">    return ResponseEntity.ok(sessionService.getUserSessions(userDetails.getUsername()));</span>
+  }
+
+  @GetMapping(&quot;/current&quot;)
+  public ResponseEntity&lt;SessionResponse&gt; getCurrentSession(@RequestHeader(&quot;Authorization&quot;) String authHeader) {
+<span class="pc bpc" id="L29" title="1 of 4 branches missed.">    if (authHeader != null &amp;&amp; authHeader.startsWith(&quot;Bearer &quot;)) {</span>
+<span class="fc" id="L30">      String token = authHeader.substring(7);</span>
+<span class="fc" id="L31">      return ResponseEntity.ok(sessionService.getCurrentSession(token));</span>
+    }
+<span class="fc" id="L33">    return ResponseEntity.notFound().build();</span>
+  }
+
+  @PostMapping(&quot;/extend&quot;)
+  public ResponseEntity&lt;SessionResponse&gt; extendSession(@RequestHeader(&quot;Authorization&quot;) String authHeader) {
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">    if (authHeader != null &amp;&amp; authHeader.startsWith(&quot;Bearer &quot;)) {</span>
+<span class="fc" id="L39">      String token = authHeader.substring(7);</span>
+<span class="fc" id="L40">      return ResponseEntity.ok(sessionService.extendSession(token));</span>
+    }
+<span class="fc" id="L42">    return ResponseEntity.badRequest().build();</span>
+  }
+
+  @DeleteMapping(&quot;/{sessionId}&quot;)
+  public ResponseEntity&lt;MessageResponse&gt; terminateSession(
+      @PathVariable Long sessionId,
+      @AuthenticationPrincipal UserDetails userDetails) {
+<span class="fc" id="L49">    sessionService.terminateSession(sessionId, userDetails.getUsername());</span>
+<span class="fc" id="L50">    return ResponseEntity.ok(new MessageResponse(&quot;Session terminated successfully&quot;));</span>
+  }
+
+  @DeleteMapping
+  public ResponseEntity&lt;MessageResponse&gt; terminateAllSessions(@AuthenticationPrincipal UserDetails userDetails) {
+<span class="fc" id="L55">    sessionService.terminateAllUserSessions(userDetails.getUsername());</span>
+
+<span class="fc" id="L57">    return ResponseEntity.ok(new MessageResponse(&quot;All sessions terminated successfully&quot;));</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

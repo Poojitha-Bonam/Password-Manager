@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecureFileListResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.dto.response</a> &gt; <span class="el_source">SecureFileListResponse.java</span></div><h1>SecureFileListResponse.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * Feature 40 – Secure File Storage Vault.
+ *
+ * &lt;p&gt;Response for {@code GET /api/files} and {@code GET /api/files/search}.&lt;/p&gt;
+ */
+<span class="pc bpc" id="L16" title="18 of 26 branches missed.">@Data</span>
+<span class="fc" id="L17">@Builder</span>
+<span class="fc" id="L18">@NoArgsConstructor</span>
+<span class="fc" id="L19">@AllArgsConstructor</span>
+public class SecureFileListResponse {
+
+    /** Folders at the current level. */
+<span class="fc" id="L23">    private List&lt;FolderItem&gt; folders;</span>
+
+    /** Files at the current level. */
+<span class="fc" id="L26">    private List&lt;FileItem&gt; files;</span>
+
+    /** Total number of files across all folders for this user. */
+<span class="fc" id="L29">    private long totalFiles;</span>
+
+    /** Total storage used in bytes. */
+<span class="fc" id="L32">    private long totalStorageBytes;</span>
+
+<span class="nc bnc" id="L34" title="All 38 branches missed.">    @Data</span>
+<span class="nc" id="L35">    @Builder</span>
+<span class="nc" id="L36">    @NoArgsConstructor</span>
+<span class="nc" id="L37">    @AllArgsConstructor</span>
+    public static class FolderItem {
+<span class="nc" id="L39">        private Long id;</span>
+<span class="nc" id="L40">        private String name;</span>
+<span class="nc" id="L41">        private Long parentId;</span>
+<span class="nc" id="L42">        private LocalDateTime createdAt;</span>
+    }
+
+<span class="nc bnc" id="L45" title="All 70 branches missed.">    @Data</span>
+<span class="nc" id="L46">    @Builder</span>
+<span class="nc" id="L47">    @NoArgsConstructor</span>
+<span class="nc" id="L48">    @AllArgsConstructor</span>
+    public static class FileItem {
+<span class="nc" id="L50">        private Long id;</span>
+<span class="nc" id="L51">        private String originalFilename;</span>
+<span class="nc" id="L52">        private Long fileSize;</span>
+<span class="nc" id="L53">        private String mimeType;</span>
+<span class="nc" id="L54">        private Long folderId;</span>
+<span class="nc" id="L55">        private String folderName;</span>
+<span class="nc" id="L56">        private LocalDateTime uploadedAt;</span>
+<span class="nc" id="L57">        private LocalDateTime lastAccessedAt;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

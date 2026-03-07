@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.backup</a> &gt; <span class="el_source">ExportService.java</span></div><h1>ExportService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.backup;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.revature.passwordmanager.dto.response.ExportResponse;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.backup.BackupExport;
+import com.revature.passwordmanager.model.backup.BackupExport.ExportFormat;
+import com.revature.passwordmanager.model.security.AuditLog.AuditAction;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.BackupExportRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import com.revature.passwordmanager.service.security.AuditLogService;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.crypto.SecretKey;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+<span class="fc" id="L32">@RequiredArgsConstructor</span>
+public class ExportService {
+
+<span class="fc" id="L35">  private static final Logger logger = LoggerFactory.getLogger(ExportService.class);</span>
+
+  private final VaultEntryRepository vaultEntryRepository;
+  private final UserRepository userRepository;
+  private final BackupExportRepository backupExportRepository;
+  private final EncryptionService encryptionService;
+  private final AuditLogService auditLogService;
+
+  @Transactional
+  public ExportResponse exportVault(String username, String format) {
+<span class="fc" id="L45">    return exportVault(username, format, null);</span>
+  }
+
+  @Transactional
+  public ExportResponse exportVault(String username, String format, String encryptionPassword) {
+<span class="fc" id="L50">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L52">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(user.getId());</span>
+<span class="fc" id="L53">    ExportFormat exportFormat = ExportFormat.valueOf(format.toUpperCase());</span>
+
+    // Derive the encryption key for decrypting passwords
+<span class="fc" id="L56">    SecretKey key = encryptionService.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+    String data;
+<span class="pc bpc" id="L59" title="1 of 3 branches missed.">    switch (exportFormat) {</span>
+      case JSON:
+<span class="fc" id="L61">        data = exportAsJson(entries, key);</span>
+<span class="fc" id="L62">        break;</span>
+      case CSV:
+<span class="fc" id="L64">        data = exportAsCsv(entries, key);</span>
+<span class="fc" id="L65">        break;</span>
+      default:
+<span class="nc" id="L67">        data = exportAsJson(entries, key);</span>
+    }
+
+<span class="fc" id="L70">    boolean encrypted = false;</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">    if (encryptionPassword != null &amp;&amp; !encryptionPassword.isBlank()) {</span>
+<span class="fc" id="L72">      String salt = UUID.randomUUID().toString();</span>
+<span class="fc" id="L73">      data = salt + &quot;:&quot; + encryptionService.encryptForExport(data, encryptionPassword, salt);</span>
+<span class="fc" id="L74">      encrypted = true;</span>
+    }
+
+<span class="fc" id="L77">    BackupExport export = BackupExport.builder()</span>
+<span class="fc" id="L78">        .user(user)</span>
+<span class="fc" id="L79">        .exportFormat(exportFormat)</span>
+<span class="fc" id="L80">        .fileName(&quot;vault_export_&quot; + System.currentTimeMillis() + &quot;.&quot; + format.toLowerCase())</span>
+<span class="fc" id="L81">        .entryCount(entries.size())</span>
+<span class="fc" id="L82">        .isEncrypted(encrypted)</span>
+<span class="fc" id="L83">        .createdAt(LocalDateTime.now())</span>
+<span class="fc" id="L84">        .build();</span>
+<span class="fc" id="L85">    backupExportRepository.save(export);</span>
+
+<span class="fc" id="L87">    auditLogService.logAction(username, AuditAction.VAULT_EXPORTED,</span>
+<span class="fc" id="L88">        String.format(&quot;Exported %d entries in %s format (encrypted: %s)&quot;,</span>
+<span class="fc" id="L89">            entries.size(), format.toUpperCase(), encrypted));</span>
+
+<span class="fc" id="L91">    logger.info(&quot;Vault exported for user: {} ({} entries, encrypted: {})&quot;,</span>
+<span class="fc" id="L92">        username, entries.size(), encrypted);</span>
+
+<span class="fc" id="L94">    return ExportResponse.builder()</span>
+<span class="fc" id="L95">        .fileName(export.getFileName())</span>
+<span class="fc" id="L96">        .format(format.toUpperCase())</span>
+<span class="fc" id="L97">        .entryCount(entries.size())</span>
+<span class="fc" id="L98">        .encrypted(encrypted)</span>
+<span class="fc" id="L99">        .data(data)</span>
+<span class="fc" id="L100">        .exportedAt(export.getCreatedAt())</span>
+<span class="fc" id="L101">        .build();</span>
+  }
+
+  private String exportAsJson(List&lt;VaultEntry&gt; entries, SecretKey key) {
+    try {
+<span class="fc" id="L106">      ObjectMapper mapper = new ObjectMapper();</span>
+<span class="fc" id="L107">      mapper.enable(SerializationFeature.INDENT_OUTPUT);</span>
+<span class="fc" id="L108">      List&lt;Map&lt;String, Object&gt;&gt; exportData = entries.stream()</span>
+<span class="fc" id="L109">          .map(entry -&gt; entryToMap(entry, key))</span>
+<span class="fc" id="L110">          .collect(Collectors.toList());</span>
+<span class="fc" id="L111">      return mapper.writeValueAsString(exportData);</span>
+<span class="nc" id="L112">    } catch (Exception e) {</span>
+<span class="nc" id="L113">      logger.error(&quot;Failed to export as JSON: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L114">      throw new RuntimeException(&quot;Export failed&quot;, e);</span>
+    }
+  }
+
+  private String exportAsCsv(List&lt;VaultEntry&gt; entries, SecretKey key) {
+<span class="fc" id="L119">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L120">    sb.append(&quot;title,username,password,website_url,notes,is_favorite\n&quot;);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">    for (VaultEntry entry : entries) {</span>
+<span class="fc" id="L122">      String decryptedPassword = decryptField(entry.getPassword(), key);</span>
+<span class="fc" id="L123">      String decryptedUsername = decryptField(entry.getUsername(), key);</span>
+<span class="fc" id="L124">      String decryptedNotes = decryptField(entry.getNotes(), key);</span>
+<span class="fc" id="L125">      sb.append(escapeCsv(entry.getTitle())).append(&quot;,&quot;);</span>
+<span class="fc" id="L126">      sb.append(escapeCsv(decryptedUsername)).append(&quot;,&quot;);</span>
+<span class="fc" id="L127">      sb.append(escapeCsv(decryptedPassword)).append(&quot;,&quot;);</span>
+<span class="fc" id="L128">      sb.append(escapeCsv(entry.getWebsiteUrl())).append(&quot;,&quot;);</span>
+<span class="fc" id="L129">      sb.append(escapeCsv(decryptedNotes)).append(&quot;,&quot;);</span>
+<span class="fc" id="L130">      sb.append(entry.getIsFavorite()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L131">    }</span>
+<span class="fc" id="L132">    return sb.toString();</span>
+  }
+
+  private Map&lt;String, Object&gt; entryToMap(VaultEntry entry, SecretKey key) {
+<span class="fc" id="L136">    Map&lt;String, Object&gt; map = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L137">    map.put(&quot;title&quot;, entry.getTitle());</span>
+<span class="fc" id="L138">    map.put(&quot;username&quot;, decryptField(entry.getUsername(), key));</span>
+<span class="fc" id="L139">    map.put(&quot;password&quot;, decryptField(entry.getPassword(), key));</span>
+<span class="fc" id="L140">    map.put(&quot;websiteUrl&quot;, entry.getWebsiteUrl());</span>
+<span class="fc" id="L141">    map.put(&quot;notes&quot;, decryptField(entry.getNotes(), key));</span>
+<span class="fc" id="L142">    map.put(&quot;isFavorite&quot;, entry.getIsFavorite());</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">    map.put(&quot;createdAt&quot;, entry.getCreatedAt() != null ? entry.getCreatedAt().toString() : null);</span>
+
+    // Include category information
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">    if (entry.getCategory() != null) {</span>
+<span class="nc" id="L147">      Map&lt;String, Object&gt; categoryMap = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L148">      categoryMap.put(&quot;id&quot;, entry.getCategory().getId());</span>
+<span class="nc" id="L149">      categoryMap.put(&quot;name&quot;, entry.getCategory().getName());</span>
+<span class="nc" id="L150">      map.put(&quot;category&quot;, categoryMap);</span>
+    }
+
+    // Include folder information
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">    if (entry.getFolder() != null) {</span>
+<span class="nc" id="L155">      Map&lt;String, Object&gt; folderMap = new HashMap&lt;&gt;();</span>
+<span class="nc" id="L156">      folderMap.put(&quot;id&quot;, entry.getFolder().getId());</span>
+<span class="nc" id="L157">      folderMap.put(&quot;name&quot;, entry.getFolder().getName());</span>
+<span class="nc" id="L158">      map.put(&quot;folder&quot;, folderMap);</span>
+    }
+
+<span class="fc" id="L161">    return map;</span>
+  }
+
+  private String decryptField(String encryptedValue, SecretKey key) {
+    try {
+<span class="fc bfc" id="L166" title="All 4 branches covered.">      if (encryptedValue == null || encryptedValue.isEmpty()) {</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        return encryptedValue == null ? &quot;&quot; : encryptedValue;</span>
+      }
+<span class="fc" id="L169">      return encryptionService.decrypt(encryptedValue, key);</span>
+<span class="nc" id="L170">    } catch (Exception e) {</span>
+<span class="nc" id="L171">      logger.warn(&quot;Failed to decrypt field for export: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L172">      return &quot;&quot;;</span>
+    }
+  }
+
+  private String escapeCsv(String value) {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">    if (value == null)</span>
+<span class="nc" id="L178">      return &quot;&quot;;</span>
+<span class="pc bpc" id="L179" title="3 of 6 branches missed.">    if (value.contains(&quot;,&quot;) || value.contains(&quot;\&quot;&quot;) || value.contains(&quot;\n&quot;)) {</span>
+<span class="nc" id="L180">      return &quot;\&quot;&quot; + value.replace(&quot;\&quot;&quot;, &quot;\&quot;\&quot;&quot;) + &quot;\&quot;&quot;;</span>
+    }
+<span class="fc" id="L182">    return value;</span>
+  }
+
+  @Transactional(readOnly = true)
+  public ExportResponse previewExport(String username, String format) {
+<span class="fc" id="L187">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L189">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(user.getId());</span>
+
+<span class="fc" id="L191">    List&lt;VaultEntry&gt; previewEntries = entries.stream().limit(3).collect(Collectors.toList());</span>
+
+    // Derive the encryption key for decrypting passwords
+<span class="fc" id="L194">    SecretKey key = encryptionService.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+<span class="fc" id="L196">    ExportFormat exportFormat = ExportFormat.valueOf(format.toUpperCase());</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">    String data = exportFormat == ExportFormat.CSV ? exportAsCsv(previewEntries, key)</span>
+<span class="fc" id="L198">        : exportAsJson(previewEntries, key);</span>
+
+<span class="fc" id="L200">    return ExportResponse.builder()</span>
+<span class="fc" id="L201">        .fileName(&quot;preview.&quot; + format.toLowerCase())</span>
+<span class="fc" id="L202">        .format(format.toUpperCase())</span>
+<span class="fc" id="L203">        .entryCount(entries.size())</span>
+<span class="fc" id="L204">        .encrypted(false)</span>
+<span class="fc" id="L205">        .data(data)</span>
+<span class="fc" id="L206">        .exportedAt(LocalDateTime.now())</span>
+<span class="fc" id="L207">        .build();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.backup</a> &gt; <span class="el_source">ImportService.java</span></div><h1>ImportService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.backup;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.revature.passwordmanager.dto.request.ImportRequest;
+import com.revature.passwordmanager.dto.response.ImportResult;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.Category;
+import com.revature.passwordmanager.model.vault.Folder;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.CategoryRepository;
+import com.revature.passwordmanager.repository.FolderRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import com.revature.passwordmanager.service.vault.VaultService;
+
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.crypto.SecretKey;
+import java.io.BufferedReader;
+import java.io.StringReader;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+<span class="fc" id="L33">@RequiredArgsConstructor</span>
+public class ImportService {
+
+<span class="fc" id="L36">  private static final Logger logger = LoggerFactory.getLogger(ImportService.class);</span>
+
+  private final VaultEntryRepository vaultEntryRepository;
+  private final UserRepository userRepository;
+  private final CategoryRepository categoryRepository;
+  private final FolderRepository folderRepository;
+  private final EncryptionService encryptionService;
+  private final VaultService vaultService;
+
+  @Transactional
+  public ImportResult importVault(String username, ImportRequest request) {
+<span class="fc" id="L47">    logger.info(&quot;Import request received for user: {} with format: {}&quot;, username, request.getFormat());</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">    logger.debug(&quot;Import data length: {}&quot;, request.getData() != null ? request.getData().length() : 0);</span>
+
+<span class="fc" id="L50">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+    // Derive key using the same method as VaultService (PBKDF2 with master password
+    // hash and salt)
+<span class="fc" id="L54">    SecretKey key = encryptionService.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+<span class="pc bpc" id="L56" title="2 of 4 branches missed.">    if (request.getFormat() == null || request.getFormat().isEmpty()) {</span>
+<span class="nc" id="L57">      logger.error(&quot;Format is null or empty&quot;);</span>
+<span class="nc" id="L58">      return ImportResult.builder()</span>
+<span class="nc" id="L59">          .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="nc" id="L60">          .message(&quot;Format is required&quot;)</span>
+<span class="nc" id="L61">          .build();</span>
+    }
+
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">    if (request.getData() == null || request.getData().isEmpty()) {</span>
+<span class="fc" id="L65">      logger.error(&quot;Data is null or empty&quot;);</span>
+<span class="fc" id="L66">      return ImportResult.builder()</span>
+<span class="fc" id="L67">          .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="fc" id="L68">          .message(&quot;Data is required&quot;)</span>
+<span class="fc" id="L69">          .build();</span>
+    }
+
+    // Detect encrypted export: ExportService stores files as &quot;salt:ciphertext&quot;
+<span class="fc" id="L73">    String data = request.getData().trim();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">    if (looksEncrypted(data)) {</span>
+<span class="nc bnc" id="L75" title="All 4 branches missed.">      if (request.getPassword() == null || request.getPassword().isBlank()) {</span>
+<span class="nc" id="L76">        return ImportResult.builder()</span>
+<span class="nc" id="L77">            .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="nc" id="L78">            .message(&quot;This file is encrypted. Please provide the decryption password.&quot;)</span>
+<span class="nc" id="L79">            .build();</span>
+      }
+      try {
+<span class="nc" id="L82">        int colonIdx = data.indexOf(':');</span>
+<span class="nc" id="L83">        String salt = data.substring(0, colonIdx);</span>
+<span class="nc" id="L84">        String ciphertext = data.substring(colonIdx + 1);</span>
+<span class="nc" id="L85">        data = encryptionService.decryptForImport(ciphertext, request.getPassword(), salt);</span>
+<span class="nc" id="L86">        logger.info(&quot;Encrypted import file decrypted successfully for user: {}&quot;, username);</span>
+<span class="nc" id="L87">      } catch (Exception e) {</span>
+<span class="nc" id="L88">        logger.warn(&quot;Failed to decrypt import file for user {}: {}&quot;, username, e.getMessage());</span>
+<span class="nc" id="L89">        return ImportResult.builder()</span>
+<span class="nc" id="L90">            .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="nc" id="L91">            .message(&quot;Decryption failed. The password may be incorrect.&quot;)</span>
+<span class="nc" id="L92">            .build();</span>
+<span class="nc" id="L93">      }</span>
+    }
+
+<span class="fc bfc" id="L96" title="All 3 branches covered.">    switch (request.getFormat().toUpperCase()) {</span>
+      case &quot;JSON&quot;:
+<span class="fc" id="L98">        return importJson(user, data, key);</span>
+      case &quot;CSV&quot;:
+<span class="fc" id="L100">        return importCsv(user, data, key);</span>
+      default:
+<span class="fc" id="L102">        return ImportResult.builder()</span>
+<span class="fc" id="L103">            .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="fc" id="L104">            .message(&quot;Unsupported format: &quot; + request.getFormat())</span>
+<span class="fc" id="L105">            .build();</span>
+    }
+  }
+
+  /**
+   * Heuristic: encrypted exports start with a UUID-style salt followed by ':'.
+   * They are never valid JSON so we can safely distinguish them.
+   */
+  private boolean looksEncrypted(String data) {
+    // Encrypted format: &quot;&lt;uuid-salt&gt;:&lt;base64-ciphertext&gt;&quot;
+    // A UUID salt is 36 chars; check that the first ':' appears before position 50
+    // and the content is NOT valid JSON (doesn't start with '[' or '{')
+<span class="fc bfc" id="L117" title="All 4 branches covered.">    if (data.startsWith(&quot;[&quot;) || data.startsWith(&quot;{&quot;))</span>
+<span class="fc" id="L118">      return false;</span>
+<span class="fc" id="L119">    int colonIdx = data.indexOf(':');</span>
+<span class="pc bpc" id="L120" title="1 of 4 branches missed.">    return colonIdx &gt; 0 &amp;&amp; colonIdx &lt; 50;</span>
+  }
+
+  @Transactional(readOnly = true)
+  public ImportResult validateImport(String username, ImportRequest request) {
+<span class="fc" id="L125">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+    // Derive key using the same method as VaultService (PBKDF2 with master password
+    // hash and salt)
+<span class="fc" id="L129">    SecretKey key = encryptionService.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+<span class="pc bpc" id="L131" title="1 of 3 branches missed.">    switch (request.getFormat().toUpperCase()) {</span>
+      case &quot;JSON&quot;:
+<span class="fc" id="L133">        return validateJson(user, request.getData(), key);</span>
+      case &quot;CSV&quot;:
+<span class="fc" id="L135">        return validateCsv(user, request.getData(), key);</span>
+      default:
+<span class="nc" id="L137">        return ImportResult.builder()</span>
+<span class="nc" id="L138">            .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="nc" id="L139">            .message(&quot;Unsupported format: &quot; + request.getFormat())</span>
+<span class="nc" id="L140">            .build();</span>
+    }
+  }
+
+  private ImportResult validateJson(User user, String data, SecretKey key) {
+<span class="fc" id="L145">    int success = 0;</span>
+<span class="fc" id="L146">    int fail = 0;</span>
+    try {
+<span class="fc" id="L148">      ObjectMapper mapper = new ObjectMapper();</span>
+<span class="fc" id="L149">      List&lt;Map&lt;String, Object&gt;&gt; entries = mapper.readValue(data, new TypeReference&lt;&gt;() {</span>
+      });
+<span class="fc bfc" id="L151" title="All 2 branches covered.">      for (Map&lt;String, Object&gt; entryMap : entries) {</span>
+        try {
+<span class="pc bpc" id="L153" title="3 of 4 branches missed.">          if (getString(entryMap, &quot;title&quot;).isEmpty() &amp;&amp; getString(entryMap, &quot;websiteUrl&quot;).isEmpty()) {</span>
+<span class="nc" id="L154">            fail++;</span>
+<span class="nc" id="L155">            continue;</span>
+          }
+<span class="fc" id="L157">          success++;</span>
+<span class="nc" id="L158">        } catch (Exception e) {</span>
+<span class="nc" id="L159">          fail++;</span>
+<span class="fc" id="L160">        }</span>
+<span class="fc" id="L161">      }</span>
+<span class="nc" id="L162">    } catch (Exception e) {</span>
+<span class="nc" id="L163">      return ImportResult.builder().totalProcessed(0).successCount(0).failCount(1).message(&quot;Invalid JSON format&quot;)</span>
+<span class="nc" id="L164">          .build();</span>
+<span class="fc" id="L165">    }</span>
+<span class="fc" id="L166">    return ImportResult.builder().totalProcessed(success + fail).successCount(success).failCount(fail)</span>
+<span class="fc" id="L167">        .message(&quot;Validation passed&quot;).build();</span>
+  }
+
+  private ImportResult validateCsv(User user, String data, SecretKey key) {
+<span class="fc" id="L171">    int success = 0, fail = 0;</span>
+<span class="fc" id="L172">    try (BufferedReader reader = new BufferedReader(new StringReader(data))) {</span>
+<span class="fc" id="L173">      String headerLine = reader.readLine();</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">      if (headerLine == null)</span>
+<span class="nc" id="L175">        return ImportResult.builder().totalProcessed(0).successCount(0).failCount(0).message(&quot;Empty CSV&quot;).build();</span>
+      String line;
+<span class="fc bfc" id="L177" title="All 2 branches covered.">      while ((line = reader.readLine()) != null) {</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (line.trim().isEmpty()) {</span>
+<span class="nc" id="L179">          continue;</span>
+        }
+<span class="fc" id="L181">        success++;</span>
+      }
+<span class="nc" id="L183">    } catch (Exception e) {</span>
+<span class="nc" id="L184">      return ImportResult.builder().totalProcessed(0).successCount(0).failCount(1).message(&quot;CSV parsing error&quot;).build();</span>
+<span class="fc" id="L185">    }</span>
+<span class="fc" id="L186">    return ImportResult.builder().totalProcessed(success + fail).successCount(success).failCount(fail)</span>
+<span class="fc" id="L187">        .message(&quot;Validation passed&quot;).build();</span>
+  }
+
+  private ImportResult importJson(User user, String data, SecretKey key) {
+<span class="fc" id="L191">    int success = 0, fail = 0;</span>
+<span class="fc" id="L192">    java.util.List&lt;VaultEntry&gt; entriesToSave = new java.util.ArrayList&lt;&gt;();</span>
+
+    // Cache for categories and folders to avoid duplicate lookups
+<span class="fc" id="L195">    Map&lt;String, Category&gt; categoryCache = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L196">    Map&lt;String, Folder&gt; folderCache = new HashMap&lt;&gt;();</span>
+
+    try {
+<span class="fc" id="L199">      ObjectMapper mapper = new ObjectMapper();</span>
+<span class="fc" id="L200">      List&lt;Map&lt;String, Object&gt;&gt; entries = mapper.readValue(data, new TypeReference&lt;&gt;() {</span>
+      });
+<span class="fc bfc" id="L202" title="All 2 branches covered.">      for (Map&lt;String, Object&gt; entryMap : entries) {</span>
+        try {
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">          String password = entryMap.get(&quot;password&quot;) != null ? entryMap.get(&quot;password&quot;).toString() : &quot;&quot;;</span>
+
+<span class="fc" id="L206">          String notes = getString(entryMap, &quot;notes&quot;);</span>
+
+          // Build the entry
+<span class="fc" id="L209">          VaultEntry.VaultEntryBuilder entryBuilder = VaultEntry.builder()</span>
+<span class="fc" id="L210">              .user(user)</span>
+<span class="fc" id="L211">              .title(getString(entryMap, &quot;title&quot;))</span>
+<span class="fc" id="L212">              .username(encryptionService.encrypt(getString(entryMap, &quot;username&quot;), key))</span>
+<span class="fc" id="L213">              .password(encryptionService.encrypt(password, key))</span>
+<span class="fc" id="L214">              .websiteUrl(getString(entryMap, &quot;websiteUrl&quot;))</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">              .notes(notes.isEmpty() ? null : encryptionService.encrypt(notes, key))</span>
+<span class="fc" id="L216">              .createdAt(LocalDateTime.now())</span>
+<span class="fc" id="L217">              .updatedAt(LocalDateTime.now());</span>
+
+          // Handle category
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">          if (entryMap.containsKey(&quot;category&quot;)) {</span>
+<span class="nc" id="L221">            Map&lt;String, Object&gt; categoryMap = (Map&lt;String, Object&gt;) entryMap.get(&quot;category&quot;);</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">            String categoryName = categoryMap != null ? (String) categoryMap.get(&quot;name&quot;) : null;</span>
+<span class="nc bnc" id="L223" title="All 4 branches missed.">            if (categoryName != null &amp;&amp; !categoryName.isEmpty()) {</span>
+<span class="nc" id="L224">              Category category = categoryCache.computeIfAbsent(categoryName, name -&gt; {</span>
+                // Try to find existing category or create new one
+<span class="nc" id="L226">                return categoryRepository.findByUserIdAndName(user.getId(), name)</span>
+<span class="nc" id="L227">                    .orElseGet(() -&gt; {</span>
+<span class="nc" id="L228">                      Category newCategory = Category.builder()</span>
+<span class="nc" id="L229">                          .name(name)</span>
+<span class="nc" id="L230">                          .user(user)</span>
+<span class="nc" id="L231">                          .icon(getString(categoryMap, &quot;icon&quot;))</span>
+<span class="nc" id="L232">                          .isDefault(false)</span>
+<span class="nc" id="L233">                          .createdAt(LocalDateTime.now())</span>
+<span class="nc" id="L234">                          .build();</span>
+<span class="nc" id="L235">                      return categoryRepository.save(newCategory);</span>
+                    });
+              });
+<span class="nc" id="L238">              entryBuilder.category(category);</span>
+            }
+          }
+
+          // Handle folder - since there's no findByUserAndName, we'll search in the list
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">          if (entryMap.containsKey(&quot;folder&quot;)) {</span>
+<span class="nc" id="L244">            Map&lt;String, Object&gt; folderMap = (Map&lt;String, Object&gt;) entryMap.get(&quot;folder&quot;);</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">            String folderName = folderMap != null ? (String) folderMap.get(&quot;name&quot;) : null;</span>
+<span class="nc bnc" id="L246" title="All 4 branches missed.">            if (folderName != null &amp;&amp; !folderName.isEmpty()) {</span>
+<span class="nc" id="L247">              Folder folder = folderCache.computeIfAbsent(folderName, name -&gt; {</span>
+                // Search for existing folder by user and name
+<span class="nc" id="L249">                List&lt;Folder&gt; userFolders = folderRepository.findByUser(user);</span>
+<span class="nc" id="L250">                return userFolders.stream()</span>
+<span class="nc" id="L251">                    .filter(f -&gt; f.getName().equals(name))</span>
+<span class="nc" id="L252">                    .findFirst()</span>
+<span class="nc" id="L253">                    .orElseGet(() -&gt; {</span>
+<span class="nc" id="L254">                      Folder newFolder = Folder.builder()</span>
+<span class="nc" id="L255">                          .name(name)</span>
+<span class="nc" id="L256">                          .user(user)</span>
+<span class="nc" id="L257">                          .createdAt(LocalDateTime.now())</span>
+<span class="nc" id="L258">                          .updatedAt(LocalDateTime.now())</span>
+<span class="nc" id="L259">                          .build();</span>
+<span class="nc" id="L260">                      return folderRepository.save(newFolder);</span>
+                    });
+              });
+<span class="nc" id="L263">              entryBuilder.folder(folder);</span>
+            }
+          }
+
+<span class="fc" id="L267">          VaultEntry entry = entryBuilder.build();</span>
+<span class="fc" id="L268">          entriesToSave.add(entry);</span>
+<span class="fc" id="L269">          success++;</span>
+<span class="nc" id="L270">        } catch (Exception e) {</span>
+<span class="nc" id="L271">          logger.warn(&quot;Failed to import entry: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L272">          fail++;</span>
+<span class="fc" id="L273">        }</span>
+<span class="fc" id="L274">      }</span>
+<span class="fc" id="L275">      vaultService.bulkInsert(user.getUsername(), entriesToSave);</span>
+<span class="fc" id="L276">    } catch (Exception e) {</span>
+<span class="fc" id="L277">      logger.error(&quot;Failed to parse JSON import: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L278">      return ImportResult.builder()</span>
+<span class="fc" id="L279">          .totalProcessed(0).successCount(0).failCount(1)</span>
+<span class="fc" id="L280">          .message(&quot;Invalid JSON format&quot;)</span>
+<span class="fc" id="L281">          .build();</span>
+<span class="fc" id="L282">    }</span>
+<span class="fc" id="L283">    return ImportResult.builder()</span>
+<span class="fc" id="L284">        .totalProcessed(success + fail).successCount(success).failCount(fail)</span>
+<span class="fc" id="L285">        .message(&quot;Import completed&quot;)</span>
+<span class="fc" id="L286">        .build();</span>
+  }
+
+  private ImportResult importCsv(User user, String data, SecretKey key) {
+<span class="fc" id="L290">    int success = 0, fail = 0;</span>
+<span class="fc" id="L291">    java.util.List&lt;VaultEntry&gt; entriesToSave = new java.util.ArrayList&lt;&gt;();</span>
+<span class="fc" id="L292">    try (BufferedReader reader = new BufferedReader(new StringReader(data))) {</span>
+<span class="fc" id="L293">      String headerLine = reader.readLine();</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">      if (headerLine == null) {</span>
+<span class="fc" id="L295">        return ImportResult.builder()</span>
+<span class="fc" id="L296">            .totalProcessed(0).successCount(0).failCount(0)</span>
+<span class="fc" id="L297">            .message(&quot;Empty CSV&quot;).build();</span>
+      }
+      String line;
+<span class="fc bfc" id="L300" title="All 2 branches covered.">      while ((line = reader.readLine()) != null) {</span>
+        try {
+<span class="fc" id="L302">          String[] parts = line.split(&quot;,&quot;, -1);</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">          String title = parts.length &gt; 0 ? parts[0].trim() : &quot;&quot;;</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">          String rawUsername = parts.length &gt; 1 ? parts[1].trim() : &quot;&quot;;</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">          String rawPassword = parts.length &gt; 2 ? parts[2].trim() : &quot;&quot;;</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">          String rawWebsite = parts.length &gt; 3 ? parts[3].trim() : &quot;&quot;;</span>
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">          String rawNotes = parts.length &gt; 4 ? parts[4].trim() : &quot;&quot;;</span>
+
+<span class="fc" id="L309">          VaultEntry entry = VaultEntry.builder()</span>
+<span class="fc" id="L310">              .user(user)</span>
+<span class="fc" id="L311">              .title(title)</span>
+<span class="fc" id="L312">              .username(encryptionService.encrypt(rawUsername, key))</span>
+<span class="fc" id="L313">              .password(encryptionService.encrypt(rawPassword, key))</span>
+<span class="fc" id="L314">              .websiteUrl(rawWebsite)</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">              .notes(rawNotes.isEmpty() ? null : encryptionService.encrypt(rawNotes, key))</span>
+<span class="fc" id="L316">              .createdAt(LocalDateTime.now())</span>
+<span class="fc" id="L317">              .updatedAt(LocalDateTime.now())</span>
+<span class="fc" id="L318">              .build();</span>
+<span class="fc" id="L319">          entriesToSave.add(entry);</span>
+<span class="fc" id="L320">          success++;</span>
+<span class="nc" id="L321">        } catch (Exception e) {</span>
+<span class="nc" id="L322">          logger.warn(&quot;Failed to import CSV line: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L323">          fail++;</span>
+<span class="pc" id="L324">        }</span>
+      }
+<span class="fc" id="L326">      vaultService.bulkInsert(user.getUsername(), entriesToSave);</span>
+<span class="pc" id="L327">    } catch (Exception e) {</span>
+<span class="nc" id="L328">      return ImportResult.builder()</span>
+<span class="nc" id="L329">          .totalProcessed(0).successCount(0).failCount(1)</span>
+<span class="nc" id="L330">          .message(&quot;CSV parsing error&quot;).build();</span>
+<span class="fc" id="L331">    }</span>
+<span class="fc" id="L332">    return ImportResult.builder()</span>
+<span class="fc" id="L333">        .totalProcessed(success + fail).successCount(success).failCount(fail)</span>
+<span class="fc" id="L334">        .message(&quot;Import completed&quot;).build();</span>
+  }
+
+  private String getString(Map&lt;String, Object&gt; map, String key) {
+<span class="fc" id="L338">    Object value = map.get(key);</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">    return value != null ? value.toString() : &quot;&quot;;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

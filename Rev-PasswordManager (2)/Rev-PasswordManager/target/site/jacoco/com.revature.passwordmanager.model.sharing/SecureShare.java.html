@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecureShare.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.sharing</a> &gt; <span class="el_source">SecureShare.java</span></div><h1>SecureShare.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.sharing;
+
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.LocalDateTime;
+
+/**
+ * Represents a secure, time-limited password share.
+ *
+ * &lt;p&gt;Security design:
+ * &lt;ul&gt;
+ *   &lt;li&gt;The {@code encryptedPassword} is re-encrypted with a random one-time AES-256 key.&lt;/li&gt;
+ *   &lt;li&gt;That key is embedded in the share URL fragment (e.g. {@code /share/{token}#key}) so
+ *       it is &lt;em&gt;never&lt;/em&gt; sent to the server on retrieval.&lt;/li&gt;
+ *   &lt;li&gt;The server stores only the ciphertext; even if the DB is compromised the attacker
+ *       cannot decrypt without the fragment key.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Entity
+@Table(name = &quot;secure_shares&quot;)
+<span class="pc bpc" id="L28" title="77 of 94 branches missed.">@Data</span>
+<span class="fc bfc" id="L29" title="All 8 branches covered.">@Builder</span>
+<span class="fc" id="L30">@NoArgsConstructor</span>
+<span class="fc" id="L31">@AllArgsConstructor</span>
+public class SecureShare {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+<span class="fc" id="L36">    private Long id;</span>
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;vault_entry_id&quot;, nullable = false)
+    @lombok.ToString.Exclude
+<span class="fc" id="L41">    private VaultEntry vaultEntry;</span>
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;owner_id&quot;, nullable = false)
+    @lombok.ToString.Exclude
+<span class="fc" id="L46">    private User owner;</span>
+
+    /** Optional — null means &quot;anyone with the link can access&quot; */
+    @Column(name = &quot;recipient_email&quot;, length = 255)
+<span class="fc" id="L50">    private String recipientEmail;</span>
+
+    /** UUID-based token used in the share URL path */
+    @Column(name = &quot;share_token&quot;, unique = true, nullable = false, length = 255)
+<span class="fc" id="L54">    private String shareToken;</span>
+
+    /** Password re-encrypted with a one-time AES-256 key (key lives only in URL fragment) */
+    @Column(name = &quot;encrypted_password&quot;, nullable = false, columnDefinition = &quot;TEXT&quot;)
+<span class="fc" id="L58">    private String encryptedPassword;</span>
+
+    /** IV used for the one-time encryption, stored alongside ciphertext */
+    @Column(name = &quot;encryption_iv&quot;, length = 255)
+<span class="fc" id="L62">    private String encryptionIv;</span>
+
+    @Column(name = &quot;expires_at&quot;, nullable = false)
+<span class="fc" id="L65">    private LocalDateTime expiresAt;</span>
+
+    @Column(name = &quot;view_count&quot;, nullable = false)
+    @Builder.Default
+<span class="fc" id="L69">    private int viewCount = 0;</span>
+
+    @Column(name = &quot;max_views&quot;, nullable = false)
+    @Builder.Default
+<span class="fc" id="L73">    private int maxViews = 1;</span>
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+<span class="fc" id="L78">    private SharePermission permission = SharePermission.VIEW_ONCE;</span>
+
+    @Column(name = &quot;is_revoked&quot;, nullable = false)
+    @Builder.Default
+<span class="fc" id="L82">    private boolean isRevoked = false;</span>
+
+    @CreationTimestamp
+    @Column(name = &quot;created_at&quot;, updatable = false)
+<span class="fc" id="L86">    private LocalDateTime createdAt;</span>
+
+    /** Returns true if this share is still usable */
+    public boolean isValid() {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        return !isRevoked</span>
+<span class="fc bfc" id="L91" title="All 4 branches covered.">                &amp;&amp; LocalDateTime.now().isBefore(expiresAt)</span>
+                &amp;&amp; viewCount &lt; maxViews;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

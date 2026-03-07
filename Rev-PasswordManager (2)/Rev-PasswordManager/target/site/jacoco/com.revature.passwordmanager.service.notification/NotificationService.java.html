@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NotificationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.notification</a> &gt; <span class="el_source">NotificationService.java</span></div><h1>NotificationService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.notification;
+
+import com.revature.passwordmanager.dto.NotificationDTO;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.notification.Notification;
+import com.revature.passwordmanager.model.notification.Notification.NotificationType;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.repository.NotificationRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+<span class="fc" id="L21">@RequiredArgsConstructor</span>
+public class NotificationService {
+
+<span class="fc" id="L24">  private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);</span>
+
+  private final NotificationRepository notificationRepository;
+  private final UserRepository userRepository;
+
+  @Transactional
+  public void createNotification(String username, NotificationType type,
+      String title, String message) {
+<span class="fc" id="L32">    User user = userRepository.findByUsername(username).orElse(null);</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">    if (user == null) {</span>
+<span class="nc" id="L34">      logger.warn(&quot;Cannot create notification for unknown user: {}&quot;, username);</span>
+<span class="nc" id="L35">      return;</span>
+    }
+
+<span class="fc" id="L38">    Notification notification = Notification.builder()</span>
+<span class="fc" id="L39">        .user(user)</span>
+<span class="fc" id="L40">        .notificationType(type)</span>
+<span class="fc" id="L41">        .title(title)</span>
+<span class="fc" id="L42">        .message(message)</span>
+<span class="fc" id="L43">        .isRead(false)</span>
+<span class="fc" id="L44">        .createdAt(LocalDateTime.now())</span>
+<span class="fc" id="L45">        .build();</span>
+<span class="fc" id="L46">    notificationRepository.save(notification);</span>
+<span class="fc" id="L47">  }</span>
+
+  @Transactional(readOnly = true)
+  public List&lt;NotificationDTO&gt; getNotifications(String username) {
+<span class="fc" id="L51">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L52">    return notificationRepository.findByUserIdOrderByCreatedAtDesc(user.getId())</span>
+<span class="fc" id="L53">        .stream().map(this::mapToDTO).collect(Collectors.toList());</span>
+  }
+
+  @Transactional(readOnly = true)
+  public long getUnreadCount(String username) {
+<span class="fc" id="L58">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L59">    long count = notificationRepository.countByUserIdAndIsReadFalse(user.getId());</span>
+<span class="fc" id="L60">    logger.debug(&quot;Unread notification count for user {}: {}&quot;, username, count);</span>
+<span class="fc" id="L61">    return count;</span>
+  }
+
+  @Transactional
+  public void markAsRead(String username, Long notificationId) {
+<span class="fc" id="L66">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L67">    Notification notification = notificationRepository.findById(notificationId)</span>
+<span class="pc" id="L68">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Notification not found&quot;));</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">    if (!notification.getUser().getId().equals(user.getId())) {</span>
+<span class="nc" id="L70">      throw new IllegalArgumentException(&quot;Notification does not belong to user&quot;);</span>
+    }
+<span class="fc" id="L72">    notification.setRead(true);</span>
+<span class="fc" id="L73">    notificationRepository.save(notification);</span>
+<span class="fc" id="L74">    logger.info(&quot;Marked notification {} as read for user {}&quot;, notificationId, username);</span>
+<span class="fc" id="L75">  }</span>
+
+  @Transactional
+  public void markAllAsRead(String username) {
+<span class="fc" id="L79">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L80">    List&lt;Notification&gt; unread = notificationRepository</span>
+<span class="fc" id="L81">        .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(user.getId());</span>
+<span class="fc" id="L82">    logger.info(&quot;Marking {} notifications as read for user {}&quot;, unread.size(), username);</span>
+<span class="fc" id="L83">    unread.forEach(n -&gt; n.setRead(true));</span>
+<span class="fc" id="L84">    notificationRepository.saveAll(unread);</span>
+<span class="fc" id="L85">    logger.info(&quot;Successfully marked all notifications as read for user {}&quot;, username);</span>
+<span class="fc" id="L86">  }</span>
+
+  @Transactional
+  public void deleteNotification(String username, Long notificationId) {
+<span class="fc" id="L90">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L91">    Notification notification = notificationRepository.findById(notificationId)</span>
+<span class="pc" id="L92">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Notification not found&quot;));</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">    if (!notification.getUser().getId().equals(user.getId())) {</span>
+<span class="nc" id="L94">      throw new IllegalArgumentException(&quot;Notification does not belong to user&quot;);</span>
+    }
+<span class="fc" id="L96">    notificationRepository.delete(notification);</span>
+<span class="fc" id="L97">  }</span>
+
+  private NotificationDTO mapToDTO(Notification notification) {
+<span class="fc" id="L100">    return NotificationDTO.builder()</span>
+<span class="fc" id="L101">        .id(notification.getId())</span>
+<span class="fc" id="L102">        .notificationType(notification.getNotificationType().name())</span>
+<span class="fc" id="L103">        .title(notification.getTitle())</span>
+<span class="fc" id="L104">        .message(notification.getMessage())</span>
+<span class="fc" id="L105">        .isRead(notification.isRead())</span>
+<span class="fc" id="L106">        .createdAt(notification.getCreatedAt())</span>
+<span class="fc" id="L107">        .build();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

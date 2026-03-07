@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityAuditService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.security</a> &gt; <span class="el_source">SecurityAuditService.java</span></div><h1>SecurityAuditService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.security;
+
+import com.revature.passwordmanager.dto.response.SecurityAuditResponse;
+import com.revature.passwordmanager.dto.response.SecurityAuditResponse.VaultEntrySummary;
+import com.revature.passwordmanager.model.security.PasswordAnalysis;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.PasswordAnalysisRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import com.revature.passwordmanager.util.EncryptionUtil;
+import com.revature.passwordmanager.util.PasswordStrengthCalculator;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.crypto.SecretKey;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+<span class="fc" id="L25">@RequiredArgsConstructor</span>
+public class SecurityAuditService {
+
+<span class="fc" id="L28">  private static final Logger logger = LoggerFactory.getLogger(SecurityAuditService.class);</span>
+  private static final int OLD_PASSWORD_DAYS = 90;
+
+  private final VaultEntryRepository vaultEntryRepository;
+  private final UserRepository userRepository;
+  private final EncryptionService encryptionService;
+  private final EncryptionUtil encryptionUtil;
+  private final PasswordStrengthCalculator passwordStrengthCalculator;
+  private final PasswordAnalysisRepository passwordAnalysisRepository;
+
+  @Transactional
+  public void analyzeEntry(VaultEntry entry) {
+    try {
+<span class="fc" id="L41">      User user = entry.getUser();</span>
+<span class="fc" id="L42">      SecretKey key = encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+      @SuppressWarnings(&quot;java:S2068&quot;) // Not a hardcoded
+      //  password, just a placeholder string
+<span class="fc" id="L46">      String password = &quot;******&quot;;</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">      if (!Boolean.TRUE.equals(entry.getIsHighlySensitive())) {</span>
+        try {
+<span class="fc" id="L49">          password = encryptionService.decrypt(entry.getPassword(), key);</span>
+<span class="nc" id="L50">        } catch (Exception e) {</span>
+<span class="nc" id="L51">          logger.error(&quot;Failed to decrypt newly created entry {} for analysis.&quot;, entry.getId());</span>
+          // If we fail to decrypt, we cannot grade the password accurately, but we should
+          // not crash the save.
+<span class="nc" id="L54">          return;</span>
+<span class="fc" id="L55">        }</span>
+      }
+
+<span class="fc" id="L58">      int score = passwordStrengthCalculator.calculateScore(password);</span>
+<span class="fc" id="L59">      List&lt;String&gt; issues = generateIssues(password, score);</span>
+
+<span class="fc" id="L61">      List&lt;VaultEntry&gt; allEntries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(user.getId());</span>
+<span class="fc" id="L62">      boolean isReused = false;</span>
+<span class="fc" id="L63">      int reuseCount = 0;</span>
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">      for (VaultEntry other : allEntries) {</span>
+<span class="pc bpc" id="L66" title="3 of 4 branches missed.">        if (!other.getId().equals(entry.getId()) &amp;&amp; !Boolean.TRUE.equals(other.getIsHighlySensitive())) {</span>
+          try {
+            @SuppressWarnings(&quot;java:S2068&quot;) // Not a hardcoded password, just a decrypted user password
+<span class="nc" id="L69">            String otherPassword = encryptionService.decrypt(other.getPassword(), key);</span>
+<span class="nc bnc" id="L70" title="All 4 branches missed.">            if (password.equals(otherPassword) &amp;&amp; !password.equals(&quot;******&quot;)) {</span>
+<span class="nc" id="L71">              isReused = true;</span>
+<span class="nc" id="L72">              reuseCount++;</span>
+
+              // Ensure the other entry is also marked as reused
+<span class="nc" id="L75">              PasswordAnalysis otherAnalysis = passwordAnalysisRepository.findByVaultEntryId(other.getId())</span>
+<span class="nc" id="L76">                  .orElse(PasswordAnalysis.builder().vaultEntry(other).build());</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">              if (!otherAnalysis.isReused()) {</span>
+<span class="nc" id="L78">                otherAnalysis.setReused(true);</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                List&lt;String&gt; otherIssues = otherAnalysis.getIssues() != null</span>
+<span class="nc" id="L80">                    ? new ArrayList&lt;&gt;(otherAnalysis.getIssues())</span>
+<span class="nc" id="L81">                    : new ArrayList&lt;&gt;();</span>
+
+<span class="nc bnc" id="L83" title="All 2 branches missed.">                if (!otherIssues.contains(&quot;Password reused&quot;)) {</span>
+<span class="nc" id="L84">                  otherIssues.add(&quot;Password reused&quot;);</span>
+<span class="nc" id="L85">                  otherAnalysis.setIssues(otherIssues);</span>
+                }
+<span class="nc" id="L87">                otherAnalysis.setLastAnalyzed(LocalDateTime.now());</span>
+<span class="nc" id="L88">                passwordAnalysisRepository.save(otherAnalysis);</span>
+              }
+            }
+<span class="nc" id="L91">          } catch (Exception e) {</span>
+<span class="nc" id="L92">            logger.warn(&quot;Failed to decrypt entry {} for reuse check&quot;, other.getId());</span>
+<span class="nc" id="L93">          }</span>
+        }
+<span class="fc" id="L95">      }</span>
+
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">      if (isReused) {</span>
+<span class="nc" id="L98">        issues.add(&quot;Password reused &quot; + reuseCount + &quot; times&quot;);</span>
+      }
+
+<span class="fc" id="L101">      PasswordAnalysis analysis = passwordAnalysisRepository.findByVaultEntryId(entry.getId())</span>
+<span class="fc" id="L102">          .orElse(PasswordAnalysis.builder().vaultEntry(entry).build());</span>
+
+<span class="fc" id="L104">      analysis.setStrengthScore(score);</span>
+<span class="fc" id="L105">      analysis.setReused(isReused);</span>
+<span class="fc" id="L106">      analysis.setIssues(issues);</span>
+<span class="fc" id="L107">      analysis.setLastAnalyzed(LocalDateTime.now());</span>
+
+<span class="fc" id="L109">      passwordAnalysisRepository.save(analysis);</span>
+<span class="fc" id="L110">      logger.debug(&quot;Analyzed entry {}: score={}, reused={}&quot;, entry.getId(), score, isReused);</span>
+
+<span class="nc" id="L112">    } catch (Exception e) {</span>
+<span class="nc" id="L113">      logger.error(&quot;Failed to analyze entry {}: {}&quot;, entry.getId(), e.getMessage());</span>
+<span class="fc" id="L114">    }</span>
+<span class="fc" id="L115">  }</span>
+
+  @Transactional
+  public SecurityAuditResponse generateAuditReport(String username) {
+<span class="fc" id="L119">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+    // Ensure all current entries have analysis data, backfilling if necessary
+<span class="fc" id="L122">    List&lt;VaultEntry&gt; allEntries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(user.getId());</span>
+<span class="fc" id="L123">    syncMissingAnalyses(user, allEntries);</span>
+
+<span class="fc" id="L125">    List&lt;PasswordAnalysis&gt; analyses = passwordAnalysisRepository.findByVaultEntryUserId(user.getId());</span>
+
+<span class="fc" id="L127">    List&lt;VaultEntrySummary&gt; weak = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L128">    List&lt;VaultEntrySummary&gt; reused = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L129">    List&lt;VaultEntrySummary&gt; old = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L131">    LocalDateTime cutoff = LocalDateTime.now().minusDays(OLD_PASSWORD_DAYS);</span>
+
+<span class="fc bfc" id="L133" title="All 2 branches covered.">    for (PasswordAnalysis analysis : analyses) {</span>
+<span class="fc" id="L134">      VaultEntry entry = analysis.getVaultEntry();</span>
+<span class="pc bpc" id="L135" title="2 of 4 branches missed.">      if (entry == null || Boolean.TRUE.equals(entry.getIsDeleted()))</span>
+<span class="nc" id="L136">        continue;</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">      if (analysis.getStrengthScore() &lt; 60) {</span>
+<span class="fc" id="L139">        weak.add(mapToSummary(entry, &quot;Weak password (score: &quot; + analysis.getStrengthScore() + &quot;/100)&quot;));</span>
+      }
+
+<span class="fc bfc" id="L142" title="All 2 branches covered.">      if (analysis.isReused()) {</span>
+<span class="fc" id="L143">        reused.add(mapToSummary(entry, &quot;Password is reused&quot;));</span>
+      }
+
+<span class="pc bpc" id="L146" title="1 of 4 branches missed.">      if (entry.getUpdatedAt() != null &amp;&amp; entry.getUpdatedAt().isBefore(cutoff)) {</span>
+<span class="fc" id="L147">        old.add(mapToSummary(entry, &quot;Password not updated in over &quot; + OLD_PASSWORD_DAYS + &quot; days&quot;));</span>
+      }
+<span class="fc" id="L149">    }</span>
+
+<span class="fc" id="L151">    int total = analyses.size();</span>
+<span class="fc" id="L152">    int securityScore = calculateSecurityScore(total, weak.size(), reused.size(), old.size());</span>
+<span class="fc" id="L153">    List&lt;String&gt; recommendations = generateRecommendations(weak.size(), reused.size(), old.size());</span>
+
+<span class="fc" id="L155">    return SecurityAuditResponse.builder()</span>
+<span class="fc" id="L156">        .totalEntries(total)</span>
+<span class="fc" id="L157">        .weakCount(weak.size())</span>
+<span class="fc" id="L158">        .reusedCount(reused.size())</span>
+<span class="fc" id="L159">        .oldCount(old.size())</span>
+<span class="fc" id="L160">        .securityScore(securityScore)</span>
+<span class="fc" id="L161">        .recommendations(recommendations)</span>
+<span class="fc" id="L162">        .weakPasswords(weak)</span>
+<span class="fc" id="L163">        .reusedPasswords(reused)</span>
+<span class="fc" id="L164">        .oldPasswords(old)</span>
+<span class="fc" id="L165">        .build();</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntrySummary&gt; getWeakPasswords(String username) {
+<span class="fc" id="L170">    return generateAuditReport(username).getWeakPasswords();</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntrySummary&gt; getReusedPasswords(String username) {
+<span class="fc" id="L175">    return generateAuditReport(username).getReusedPasswords();</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntrySummary&gt; getOldPasswords(String username) {
+<span class="fc" id="L180">    return generateAuditReport(username).getOldPasswords();</span>
+  }
+
+  private VaultEntrySummary mapToSummary(VaultEntry entry, String issue) {
+<span class="fc" id="L184">    return VaultEntrySummary.builder()</span>
+<span class="fc" id="L185">        .id(entry.getId())</span>
+<span class="fc" id="L186">        .title(entry.getTitle())</span>
+<span class="fc" id="L187">        .websiteUrl(entry.getWebsiteUrl())</span>
+<span class="fc" id="L188">        .issue(issue)</span>
+<span class="fc" id="L189">        .build();</span>
+  }
+
+  private int calculateSecurityScore(int total, int weak, int reused, int old) {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">    if (total == 0)</span>
+<span class="fc" id="L194">      return 100;</span>
+<span class="fc" id="L195">    int issues = weak + reused + old;</span>
+<span class="fc" id="L196">    double ratio = 1.0 - ((double) issues / (total * 3));</span>
+<span class="fc" id="L197">    return Math.max(0, Math.min(100, (int) (ratio * 100)));</span>
+  }
+
+  private List&lt;String&gt; generateIssues(String password, int score) {
+<span class="fc" id="L201">    List&lt;String&gt; issues = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">    if (password.length() &lt; 8)</span>
+<span class="nc" id="L203">      issues.add(&quot;Too short&quot;);</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">    if (score &lt; 60)</span>
+<span class="fc" id="L205">      issues.add(&quot;Weak complexity&quot;);</span>
+<span class="fc" id="L206">    return issues;</span>
+  }
+
+  private List&lt;String&gt; generateRecommendations(int weak, int reused, int old) {
+<span class="fc" id="L210">    List&lt;String&gt; recommendations = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">    if (weak &gt; 0)</span>
+<span class="fc" id="L212">      recommendations.add(&quot;Update &quot; + weak + &quot; weak password(s)&quot;);</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">    if (reused &gt; 0)</span>
+<span class="fc" id="L214">      recommendations.add(&quot;Change &quot; + reused + &quot; reused password(s)&quot;);</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">    if (old &gt; 0)</span>
+<span class="fc" id="L216">      recommendations.add(&quot;Rotate &quot; + old + &quot; old password(s)&quot;);</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">    if (recommendations.isEmpty())</span>
+<span class="fc" id="L218">      recommendations.add(&quot;Your vault security is excellent!&quot;);</span>
+<span class="fc" id="L219">    return recommendations;</span>
+  }
+
+  private void syncMissingAnalyses(User user, List&lt;VaultEntry&gt; allEntries) {
+<span class="fc" id="L223">    List&lt;PasswordAnalysis&gt; existingAnalyses = passwordAnalysisRepository.findByVaultEntryUserId(user.getId());</span>
+<span class="fc" id="L224">    Set&lt;Long&gt; analyzedEntryIds = existingAnalyses.stream()</span>
+<span class="fc" id="L225">        .map(a -&gt; a.getVaultEntry().getId())</span>
+<span class="fc" id="L226">        .collect(Collectors.toSet());</span>
+
+    // Force a full re-analysis if we are missing any entries (to fix old bad data)
+    // Or if there are no existing analyses but we have entries
+<span class="fc" id="L230">    boolean needSync = false;</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">    for (VaultEntry entry : allEntries) {</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">      if (!analyzedEntryIds.contains(entry.getId())) {</span>
+<span class="nc" id="L233">        needSync = true;</span>
+<span class="nc" id="L234">        break;</span>
+      }
+<span class="nc" id="L236">    }</span>
+
+    // Since previous bugs might have left isReused in a bad state, we just do a
+    // full scan
+    // for missing ones to ensure accuracy. If we find missing ones, we re-evaluate
+    // everything.
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">    if (needSync) {</span>
+<span class="nc" id="L243">      logger.info(&quot;Found missing password analysis data for user {}. Running full re-scan.&quot;, user.getUsername());</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">      for (VaultEntry entry : allEntries) {</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">        if (!analyzedEntryIds.contains(entry.getId())) {</span>
+<span class="nc" id="L246">          analyzeEntry(entry);</span>
+        }
+<span class="nc" id="L248">      }</span>
+    }
+<span class="fc" id="L250">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

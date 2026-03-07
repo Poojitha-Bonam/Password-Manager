@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TimelinePeriod.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.analytics</a> &gt; <span class="el_source">TimelinePeriod.java</span></div><h1>TimelinePeriod.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.analytics;
+
+import java.time.LocalDateTime;
+
+/**
+ * Value object representing the time window for a timeline query.
+ *
+ * &lt;p&gt;Encapsulates the period label string, start time, and end time so that
+ * service methods and tests can reason about time ranges as first-class objects
+ * rather than scattered {@code Integer days} parameters and inline string
+ * concatenation.&lt;/p&gt;
+ */
+public final class TimelinePeriod {
+
+    private final String label;
+    private final LocalDateTime start;
+    private final LocalDateTime end;
+
+<span class="fc" id="L19">    private TimelinePeriod(String label, LocalDateTime start, LocalDateTime end) {</span>
+<span class="fc" id="L20">        this.label = label;</span>
+<span class="fc" id="L21">        this.start = start;</span>
+<span class="fc" id="L22">        this.end = end;</span>
+<span class="fc" id="L23">    }</span>
+
+    // ── Factory methods ───────────────────────────────────────────────────────
+
+    /**
+     * Creates a {@code TimelinePeriod} covering the last {@code days} days up to now.
+     *
+     * @param days number of past days to include (must be &gt; 0)
+     * @return a bounded period
+     */
+    public static TimelinePeriod lastDays(int days) {
+<span class="fc" id="L34">        LocalDateTime now = LocalDateTime.now();</span>
+<span class="fc" id="L35">        return new TimelinePeriod(&quot;LAST_&quot; + days + &quot;_DAYS&quot;, now.minusDays(days), now);</span>
+    }
+
+    /**
+     * Creates a {@code TimelinePeriod} representing all time from the given
+     * earliest event timestamp to now.
+     *
+     * @param earliest the timestamp of the oldest relevant event
+     * @return an unbounded (all-time) period
+     */
+    public static TimelinePeriod allTime(LocalDateTime earliest) {
+<span class="fc" id="L46">        return new TimelinePeriod(&quot;ALL_TIME&quot;,</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                earliest != null ? earliest : LocalDateTime.now(),</span>
+<span class="fc" id="L48">                LocalDateTime.now());</span>
+    }
+
+    /**
+     * Resolves the correct {@code TimelinePeriod} from an optional {@code days}
+     * parameter — the same logic used across all timeline service methods.
+     *
+     * @param days     optional days filter (null or ≤ 0 → all time)
+     * @param earliest earliest known event timestamp for all-time mode
+     * @return the resolved period
+     */
+    public static TimelinePeriod resolve(Integer days, LocalDateTime earliest) {
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">        if (days != null &amp;&amp; days &gt; 0) {</span>
+<span class="fc" id="L61">            return lastDays(days);</span>
+        }
+<span class="fc" id="L63">        return allTime(earliest);</span>
+    }
+
+    // ── Accessors ─────────────────────────────────────────────────────────────
+
+    /** Returns the display label, e.g. {@code &quot;LAST_30_DAYS&quot;} or {@code &quot;ALL_TIME&quot;}. */
+    public String getLabel() {
+<span class="fc" id="L70">        return label;</span>
+    }
+
+    /** Returns the start of this period (inclusive). */
+    public LocalDateTime getStart() {
+<span class="fc" id="L75">        return start;</span>
+    }
+
+    /** Returns the end of this period (inclusive, always {@link LocalDateTime#now()} at construction). */
+    public LocalDateTime getEnd() {
+<span class="fc" id="L80">        return end;</span>
+    }
+
+    /**
+     * Returns the number of calendar days spanned by this period.
+     * Used to compute accurate averages in the stats endpoint.
+     */
+    public long getDays() {
+<span class="nc" id="L88">        return java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L93">        return &quot;TimelinePeriod{label='&quot; + label + &quot;', start=&quot; + start + &quot;, end=&quot; + end + &quot;}&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

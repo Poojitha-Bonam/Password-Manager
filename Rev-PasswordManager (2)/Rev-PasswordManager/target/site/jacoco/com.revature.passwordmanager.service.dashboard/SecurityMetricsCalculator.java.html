@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityMetricsCalculator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.dashboard</a> &gt; <span class="el_source">SecurityMetricsCalculator.java</span></div><h1>SecurityMetricsCalculator.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.dashboard;
+
+import com.revature.passwordmanager.dto.response.PasswordAgeResponse;
+import com.revature.passwordmanager.dto.response.PasswordHealthMetricsResponse;
+import com.revature.passwordmanager.dto.response.ReusedPasswordResponse;
+import com.revature.passwordmanager.dto.response.SecurityScoreResponse;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import com.revature.passwordmanager.util.EncryptionUtil;
+import com.revature.passwordmanager.util.PasswordStrengthCalculator;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import javax.crypto.SecretKey;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Component
+<span class="fc" id="L25">@RequiredArgsConstructor</span>
+public class SecurityMetricsCalculator {
+
+    private static final int OLD_PASSWORD_THRESHOLD_DAYS = 90;
+    private static final int ANCIENT_PASSWORD_THRESHOLD_DAYS = 180;
+    private static final int AGING_PASSWORD_THRESHOLD_DAYS = 30;
+
+    private final VaultEntryRepository vaultEntryRepository;
+    private final PasswordStrengthCalculator passwordStrengthCalculator;
+    private final EncryptionService encryptionService;
+    private final EncryptionUtil encryptionUtil;
+
+    public SecurityScoreResponse calculateSecurityScore(Long userId) {
+<span class="fc" id="L38">        List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(userId);</span>
+
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (entries.isEmpty()) {</span>
+<span class="fc" id="L41">            return SecurityScoreResponse.builder()</span>
+<span class="fc" id="L42">                    .overallScore(100)</span>
+<span class="fc" id="L43">                    .scoreLabel(&quot;Excellent&quot;)</span>
+<span class="fc" id="L44">                    .totalPasswords(0)</span>
+<span class="fc" id="L45">                    .recommendation(&quot;Add passwords to your vault to start tracking security metrics.&quot;)</span>
+<span class="fc" id="L46">                    .build();</span>
+        }
+
+        // Derive the key ONCE for the whole batch — key derivation (PBKDF2) is
+        // expensive
+<span class="fc" id="L51">        SecretKey key = deriveKeyForUser(entries.get(0));</span>
+
+<span class="fc" id="L53">        int total = entries.size();</span>
+<span class="fc" id="L54">        int weakCount = 0;</span>
+<span class="fc" id="L55">        int fairCount = 0;</span>
+<span class="fc" id="L56">        int goodCount = 0;</span>
+<span class="fc" id="L57">        int strongCount = 0;</span>
+
+        // Gap 3 fix: only group non-empty decrypted passwords to avoid counting
+        // decryption failures (empty string) as a reused-password group.
+<span class="fc" id="L61">        Map&lt;String, List&lt;String&gt;&gt; decryptedPasswordGroups = new HashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (VaultEntry entry : entries) {</span>
+<span class="fc" id="L64">            String decrypted = decryptSafely(entry, key);</span>
+<span class="fc" id="L65">            int score = passwordStrengthCalculator.calculateScore(decrypted);</span>
+<span class="fc" id="L66">            String label = passwordStrengthCalculator.getStrengthLabel(score);</span>
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (label != null) {</span>
+<span class="pc bpc" id="L69" title="2 of 5 branches missed.">                switch (label) {</span>
+<span class="fc" id="L70">                    case &quot;Very Weak&quot;, &quot;Weak&quot; -&gt; weakCount++;</span>
+<span class="nc" id="L71">                    case &quot;Fair&quot; -&gt; fairCount++;</span>
+<span class="fc" id="L72">                    case &quot;Good&quot; -&gt; goodCount++;</span>
+<span class="fc" id="L73">                    case &quot;Strong&quot; -&gt; strongCount++;</span>
+                }
+            }
+
+            // Only track non-empty passwords for reuse detection
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (!decrypted.isBlank()) {</span>
+<span class="fc" id="L79">                decryptedPasswordGroups</span>
+<span class="fc" id="L80">                        .computeIfAbsent(decrypted, k -&gt; new ArrayList&lt;&gt;())</span>
+<span class="fc" id="L81">                        .add(entry.getTitle());</span>
+            }
+<span class="fc" id="L83">        }</span>
+
+<span class="fc" id="L85">        long reusedCount = decryptedPasswordGroups.values().stream()</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                .filter(v -&gt; v.size() &gt; 1)</span>
+<span class="fc" id="L87">                .mapToLong(v -&gt; v.size())</span>
+<span class="fc" id="L88">                .sum();</span>
+
+<span class="fc" id="L90">        long oldCount = entries.stream()</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                .filter(e -&gt; e.getUpdatedAt() != null &amp;&amp;</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                        ChronoUnit.DAYS.between(e.getUpdatedAt(), LocalDateTime.now()) &gt; OLD_PASSWORD_THRESHOLD_DAYS)</span>
+<span class="fc" id="L93">                .count();</span>
+
+<span class="fc" id="L95">        int overallScore = computeOverallScore(total, weakCount, (int) reusedCount, (int) oldCount);</span>
+<span class="fc" id="L96">        String label = getScoreLabel(overallScore);</span>
+<span class="fc" id="L97">        String recommendation = buildRecommendation(weakCount, (int) reusedCount, (int) oldCount);</span>
+
+<span class="fc" id="L99">        return SecurityScoreResponse.builder()</span>
+<span class="fc" id="L100">                .overallScore(overallScore)</span>
+<span class="fc" id="L101">                .scoreLabel(label)</span>
+<span class="fc" id="L102">                .totalPasswords(total)</span>
+<span class="fc" id="L103">                .strongPasswords(strongCount + goodCount)</span>
+<span class="fc" id="L104">                .fairPasswords(fairCount)</span>
+<span class="fc" id="L105">                .weakPasswords(weakCount)</span>
+<span class="fc" id="L106">                .reusedPasswords((int) reusedCount)</span>
+<span class="fc" id="L107">                .oldPasswords((int) oldCount)</span>
+<span class="fc" id="L108">                .recommendation(recommendation)</span>
+<span class="fc" id="L109">                .build();</span>
+    }
+
+    public PasswordHealthMetricsResponse calculatePasswordHealth(Long userId) {
+<span class="fc" id="L113">        List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(userId);</span>
+
+<span class="fc" id="L115">        int total = entries.size();</span>
+<span class="fc" id="L116">        int strongCount = 0;</span>
+<span class="fc" id="L117">        int goodCount = 0;</span>
+<span class="fc" id="L118">        int fairCount = 0;</span>
+<span class="fc" id="L119">        int weakCount = 0;</span>
+<span class="fc" id="L120">        int veryWeakCount = 0;</span>
+<span class="fc" id="L121">        double totalScore = 0;</span>
+
+        // Derive the key ONCE for the whole batch
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        SecretKey key = total == 0 ? null : deriveKeyForUser(entries.get(0));</span>
+
+        // Gap 1 fix: build a score cache in a single decryption pass so the
+        // per-category loop below can reuse results without re-decrypting.
+<span class="fc" id="L128">        Map&lt;Long, Integer&gt; scoreCache = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        for (VaultEntry entry : entries) {</span>
+<span class="fc" id="L130">            String decrypted = decryptSafely(entry, key);</span>
+<span class="fc" id="L131">            int score = passwordStrengthCalculator.calculateScore(decrypted);</span>
+<span class="fc" id="L132">            scoreCache.put(entry.getId(), score);</span>
+<span class="fc" id="L133">            totalScore += score;</span>
+<span class="fc" id="L134">            String strengthLabel = passwordStrengthCalculator.getStrengthLabel(score);</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            if (strengthLabel != null) {</span>
+<span class="pc bpc" id="L136" title="2 of 6 branches missed.">                switch (strengthLabel) {</span>
+<span class="fc" id="L137">                    case &quot;Strong&quot; -&gt; strongCount++;</span>
+<span class="fc" id="L138">                    case &quot;Good&quot; -&gt; goodCount++;</span>
+<span class="fc" id="L139">                    case &quot;Fair&quot; -&gt; fairCount++;</span>
+<span class="fc" id="L140">                    case &quot;Weak&quot; -&gt; weakCount++;</span>
+<span class="nc" id="L141">                    case &quot;Very Weak&quot; -&gt; veryWeakCount++;</span>
+                }
+            }
+<span class="fc" id="L144">        }</span>
+
+<span class="fc" id="L146">        Map&lt;String, List&lt;VaultEntry&gt;&gt; byCategory = entries.stream()</span>
+<span class="fc" id="L147">                .collect(Collectors</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                        .groupingBy(e -&gt; e.getCategory() != null ? e.getCategory().getName() : &quot;Uncategorized&quot;));</span>
+
+<span class="fc" id="L150">        List&lt;PasswordHealthMetricsResponse.PasswordCategoryBreakdown&gt; breakdowns = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;VaultEntry&gt;&gt; catEntry : byCategory.entrySet()) {</span>
+<span class="fc" id="L153">            List&lt;VaultEntry&gt; catEntries = catEntry.getValue();</span>
+<span class="fc" id="L154">            double catTotalScore = 0;</span>
+<span class="fc" id="L155">            int catWeakCount = 0;</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            for (VaultEntry e : catEntries) {</span>
+                // Reuse cached score — no second decryption
+<span class="fc" id="L158">                int score = scoreCache.getOrDefault(e.getId(), 0);</span>
+<span class="fc" id="L159">                catTotalScore += score;</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                if (score &lt; 40)</span>
+<span class="fc" id="L161">                    catWeakCount++;</span>
+<span class="fc" id="L162">            }</span>
+<span class="fc" id="L163">            breakdowns.add(PasswordHealthMetricsResponse.PasswordCategoryBreakdown.builder()</span>
+<span class="fc" id="L164">                    .categoryName(catEntry.getKey())</span>
+<span class="fc" id="L165">                    .count(catEntries.size())</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">                    .averageScore(catEntries.isEmpty() ? 0 : catTotalScore / catEntries.size())</span>
+<span class="fc" id="L167">                    .weakCount(catWeakCount)</span>
+<span class="fc" id="L168">                    .build());</span>
+<span class="fc" id="L169">        }</span>
+
+<span class="fc" id="L171">        return PasswordHealthMetricsResponse.builder()</span>
+<span class="fc" id="L172">                .totalPasswords(total)</span>
+<span class="fc" id="L173">                .strongCount(strongCount)</span>
+<span class="fc" id="L174">                .goodCount(goodCount)</span>
+<span class="fc" id="L175">                .fairCount(fairCount)</span>
+<span class="fc" id="L176">                .weakCount(weakCount)</span>
+<span class="fc" id="L177">                .veryWeakCount(veryWeakCount)</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                .averageStrengthScore(total == 0 ? 0 : totalScore / total)</span>
+<span class="fc" id="L179">                .categoryBreakdowns(breakdowns)</span>
+<span class="fc" id="L180">                .build();</span>
+    }
+
+    public ReusedPasswordResponse findReusedPasswords(Long userId) {
+<span class="fc" id="L184">        List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(userId);</span>
+
+        // Derive the key ONCE for the whole batch
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        SecretKey key = entries.isEmpty() ? null : deriveKeyForUser(entries.get(0));</span>
+
+<span class="fc" id="L189">        Map&lt;String, List&lt;VaultEntry&gt;&gt; byPassword = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        for (VaultEntry entry : entries) {</span>
+<span class="fc" id="L191">            String decrypted = decryptSafely(entry, key);</span>
+            // Gap 3 fix: skip failed decryptions (empty string) — do not count
+            // entries that couldn't be decrypted as reusing the same &quot;empty&quot; password.
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">            if (!decrypted.isBlank()) {</span>
+<span class="fc" id="L195">                byPassword.computeIfAbsent(decrypted, k -&gt; new ArrayList&lt;&gt;()).add(entry);</span>
+            }
+<span class="fc" id="L197">        }</span>
+
+<span class="fc" id="L199">        List&lt;ReusedPasswordResponse.ReusedPasswordGroup&gt; groups = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L200">        int totalAffected = 0;</span>
+
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;VaultEntry&gt;&gt; pw : byPassword.entrySet()) {</span>
+<span class="fc" id="L203">            List&lt;VaultEntry&gt; group = pw.getValue();</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            if (group.size() &gt; 1) {</span>
+<span class="fc" id="L205">                totalAffected += group.size();</span>
+<span class="fc" id="L206">                List&lt;ReusedPasswordResponse.ReusedEntryInfo&gt; infos = group.stream()</span>
+<span class="fc" id="L207">                        .map(e -&gt; ReusedPasswordResponse.ReusedEntryInfo.builder()</span>
+<span class="fc" id="L208">                                .entryId(e.getId())</span>
+<span class="fc" id="L209">                                .title(e.getTitle())</span>
+<span class="fc" id="L210">                                .websiteUrl(e.getWebsiteUrl())</span>
+<span class="fc" id="L211">                                .build())</span>
+<span class="fc" id="L212">                        .collect(Collectors.toList());</span>
+
+<span class="fc" id="L214">                groups.add(ReusedPasswordResponse.ReusedPasswordGroup.builder()</span>
+<span class="fc" id="L215">                        .reuseCount(group.size())</span>
+<span class="fc" id="L216">                        .entries(infos)</span>
+<span class="fc" id="L217">                        .build());</span>
+            }
+<span class="fc" id="L219">        }</span>
+
+<span class="fc" id="L221">        return ReusedPasswordResponse.builder()</span>
+<span class="fc" id="L222">                .totalReusedGroups(groups.size())</span>
+<span class="fc" id="L223">                .totalAffectedEntries(totalAffected)</span>
+<span class="fc" id="L224">                .reusedGroups(groups)</span>
+<span class="fc" id="L225">                .build();</span>
+    }
+
+    public PasswordAgeResponse calculatePasswordAge(Long userId) {
+<span class="fc" id="L229">        List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(userId);</span>
+
+<span class="fc" id="L231">        int fresh = 0;</span>
+<span class="fc" id="L232">        int aging = 0;</span>
+<span class="fc" id="L233">        int old = 0;</span>
+<span class="fc" id="L234">        int ancient = 0;</span>
+<span class="fc" id="L235">        double totalAgeDays = 0;</span>
+
+<span class="fc" id="L237">        LocalDateTime now = LocalDateTime.now();</span>
+<span class="fc" id="L238">        Map&lt;String, Integer&gt; buckets = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L239">        buckets.put(&quot;&lt; 30 days&quot;, 0);</span>
+<span class="fc" id="L240">        buckets.put(&quot;30-90 days&quot;, 0);</span>
+<span class="fc" id="L241">        buckets.put(&quot;90-180 days&quot;, 0);</span>
+<span class="fc" id="L242">        buckets.put(&quot;&gt; 180 days&quot;, 0);</span>
+
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (VaultEntry entry : entries) {</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">            LocalDateTime lastChanged = entry.getUpdatedAt() != null ? entry.getUpdatedAt() : entry.getCreatedAt();</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">            if (lastChanged == null) {</span>
+<span class="nc" id="L247">                ancient++;</span>
+<span class="nc" id="L248">                buckets.merge(&quot;&gt; 180 days&quot;, 1, Integer::sum);</span>
+<span class="nc" id="L249">                continue;</span>
+            }
+
+<span class="fc" id="L252">            long ageDays = ChronoUnit.DAYS.between(lastChanged, now);</span>
+<span class="fc" id="L253">            totalAgeDays += ageDays;</span>
+
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            if (ageDays &lt; AGING_PASSWORD_THRESHOLD_DAYS) {</span>
+<span class="fc" id="L256">                fresh++;</span>
+<span class="fc" id="L257">                buckets.merge(&quot;&lt; 30 days&quot;, 1, Integer::sum);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">            } else if (ageDays &lt; OLD_PASSWORD_THRESHOLD_DAYS) {</span>
+<span class="fc" id="L259">                aging++;</span>
+<span class="fc" id="L260">                buckets.merge(&quot;30-90 days&quot;, 1, Integer::sum);</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">            } else if (ageDays &lt; ANCIENT_PASSWORD_THRESHOLD_DAYS) {</span>
+<span class="fc" id="L262">                old++;</span>
+<span class="fc" id="L263">                buckets.merge(&quot;90-180 days&quot;, 1, Integer::sum);</span>
+            } else {
+<span class="fc" id="L265">                ancient++;</span>
+<span class="fc" id="L266">                buckets.merge(&quot;&gt; 180 days&quot;, 1, Integer::sum);</span>
+            }
+<span class="fc" id="L268">        }</span>
+
+<span class="fc" id="L270">        List&lt;PasswordAgeResponse.AgeDistributionBucket&gt; distribution = List.of(</span>
+<span class="fc" id="L271">                PasswordAgeResponse.AgeDistributionBucket.builder()</span>
+<span class="fc" id="L272">                        .label(&quot;&lt; 30 days&quot;).count(buckets.get(&quot;&lt; 30 days&quot;)).minDays(0).maxDays(29).build(),</span>
+<span class="fc" id="L273">                PasswordAgeResponse.AgeDistributionBucket.builder()</span>
+<span class="fc" id="L274">                        .label(&quot;30-90 days&quot;).count(buckets.get(&quot;30-90 days&quot;)).minDays(30).maxDays(90).build(),</span>
+<span class="fc" id="L275">                PasswordAgeResponse.AgeDistributionBucket.builder()</span>
+<span class="fc" id="L276">                        .label(&quot;90-180 days&quot;).count(buckets.get(&quot;90-180 days&quot;)).minDays(91).maxDays(180).build(),</span>
+<span class="fc" id="L277">                PasswordAgeResponse.AgeDistributionBucket.builder()</span>
+<span class="fc" id="L278">                        .label(&quot;&gt; 180 days&quot;).count(buckets.get(&quot;&gt; 180 days&quot;)).minDays(181).maxDays(Integer.MAX_VALUE)</span>
+<span class="fc" id="L279">                        .build());</span>
+
+<span class="fc" id="L281">        int total = entries.size();</span>
+<span class="fc" id="L282">        return PasswordAgeResponse.builder()</span>
+<span class="fc" id="L283">                .totalPasswords(total)</span>
+<span class="fc" id="L284">                .freshCount(fresh)</span>
+<span class="fc" id="L285">                .agingCount(aging)</span>
+<span class="fc" id="L286">                .oldCount(old)</span>
+<span class="fc" id="L287">                .ancientCount(ancient)</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">                .averageAgeInDays(total == 0 ? 0 : totalAgeDays / total)</span>
+<span class="fc" id="L289">                .distribution(distribution)</span>
+<span class="fc" id="L290">                .build();</span>
+    }
+
+    public List&lt;com.revature.passwordmanager.dto.response.VaultEntryResponse&gt; getWeakPasswordsList(Long userId) {
+<span class="nc" id="L294">        List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(userId);</span>
+<span class="nc" id="L295">        List&lt;com.revature.passwordmanager.dto.response.VaultEntryResponse&gt; weakEntries = new ArrayList&lt;&gt;();</span>
+
+        // Derive the key ONCE for the whole batch
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        SecretKey key = entries.isEmpty() ? null : deriveKeyForUser(entries.get(0));</span>
+
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        for (VaultEntry entry : entries) {</span>
+<span class="nc" id="L301">            String decrypted = decryptSafely(entry, key);</span>
+<span class="nc" id="L302">            int score = passwordStrengthCalculator.calculateScore(decrypted);</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">            if (score &lt; 40) {</span>
+<span class="nc" id="L304">                weakEntries.add(mapToResponse(entry, score));</span>
+            }
+<span class="nc" id="L306">        }</span>
+<span class="nc" id="L307">        return weakEntries;</span>
+    }
+
+    public List&lt;com.revature.passwordmanager.dto.response.VaultEntryResponse&gt; getOldPasswordsList(Long userId) {
+<span class="nc" id="L311">        List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(userId);</span>
+<span class="nc" id="L312">        List&lt;com.revature.passwordmanager.dto.response.VaultEntryResponse&gt; oldEntries = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L313">        LocalDateTime now = LocalDateTime.now();</span>
+
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        for (VaultEntry entry : entries) {</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            LocalDateTime lastChanged = entry.getUpdatedAt() != null ? entry.getUpdatedAt() : entry.getCreatedAt();</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">            if (lastChanged == null) {</span>
+<span class="nc" id="L318">                oldEntries.add(mapToResponse(entry, 0)); // No date counts as ancient</span>
+            } else {
+<span class="nc" id="L320">                long ageDays = ChronoUnit.DAYS.between(lastChanged, now);</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">                if (ageDays &gt; OLD_PASSWORD_THRESHOLD_DAYS) {</span>
+<span class="nc" id="L322">                    oldEntries.add(mapToResponse(entry, 0));</span>
+                }
+            }
+<span class="nc" id="L325">        }</span>
+<span class="nc" id="L326">        return oldEntries;</span>
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Derives the AES key for a user's vault. Call this ONCE per batch, not per
+     * entry.
+     */
+    private SecretKey deriveKeyForUser(VaultEntry sampleEntry) {
+        try {
+<span class="fc" id="L337">            return encryptionUtil.deriveKey(</span>
+<span class="fc" id="L338">                    sampleEntry.getUser().getMasterPasswordHash(),</span>
+<span class="fc" id="L339">                    sampleEntry.getUser().getSalt());</span>
+<span class="fc" id="L340">        } catch (Exception e) {</span>
+<span class="fc" id="L341">            return null;</span>
+        }
+    }
+
+    /** Decrypts a vault entry using a pre-derived key (fast path). */
+    private String decryptSafely(VaultEntry entry, SecretKey key) {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        if (key == null)</span>
+<span class="fc" id="L348">            return &quot;&quot;;</span>
+        try {
+<span class="fc" id="L350">            return encryptionService.decrypt(entry.getPassword(), key);</span>
+<span class="nc" id="L351">        } catch (Exception e) {</span>
+<span class="nc" id="L352">            return &quot;&quot;;</span>
+        }
+    }
+
+    private com.revature.passwordmanager.dto.response.VaultEntryResponse mapToResponse(VaultEntry e,
+            int strengthScore) {
+<span class="nc bnc" id="L358" title="All 2 branches missed.">        String strengthLabel = strengthScore &gt; 0 ? passwordStrengthCalculator.getStrengthLabel(strengthScore) : null;</span>
+
+<span class="nc" id="L360">        return com.revature.passwordmanager.dto.response.VaultEntryResponse.builder()</span>
+<span class="nc" id="L361">                .id(e.getId())</span>
+<span class="nc" id="L362">                .title(e.getTitle())</span>
+<span class="nc" id="L363">                .websiteUrl(e.getWebsiteUrl())</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">                .categoryId(e.getCategory() != null ? e.getCategory().getId() : null)</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">                .categoryName(e.getCategory() != null ? e.getCategory().getName() : null)</span>
+<span class="nc" id="L366">                .isFavorite(e.getIsFavorite())</span>
+<span class="nc" id="L367">                .createdAt(e.getCreatedAt())</span>
+<span class="nc" id="L368">                .updatedAt(e.getUpdatedAt())</span>
+<span class="nc" id="L369">                .strengthScore(strengthScore)</span>
+<span class="nc" id="L370">                .strengthLabel(strengthLabel)</span>
+<span class="nc" id="L371">                .build();</span>
+    }
+
+    int computeOverallScore(int total, int weakCount, int reusedCount, int oldCount) {
+<span class="fc bfc" id="L375" title="All 2 branches covered.">        if (total == 0)</span>
+<span class="fc" id="L376">            return 100;</span>
+
+        // Deduct only — strong passwords are the baseline, not a bonus.
+        // Having weak/reused/old passwords should always lower the score.
+<span class="fc" id="L380">        double score = 100.0;</span>
+<span class="fc" id="L381">        score -= ((double) weakCount / total) * 40; // up to -40 for all-weak vault</span>
+<span class="fc" id="L382">        score -= ((double) reusedCount / total) * 30; // up to -30 for all-reused</span>
+<span class="fc" id="L383">        score -= ((double) oldCount / total) * 20; // up to -20 for all-old</span>
+
+<span class="fc" id="L385">        return (int) Math.max(0, Math.min(100, score));</span>
+    }
+
+    String getScoreLabel(int score) {
+<span class="fc bfc" id="L389" title="All 2 branches covered.">        if (score &gt;= 90)</span>
+<span class="fc" id="L390">            return &quot;Excellent&quot;;</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">        if (score &gt;= 75)</span>
+<span class="fc" id="L392">            return &quot;Good&quot;;</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        if (score &gt;= 50)</span>
+<span class="fc" id="L394">            return &quot;Fair&quot;;</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        if (score &gt;= 25)</span>
+<span class="fc" id="L396">            return &quot;Poor&quot;;</span>
+<span class="fc" id="L397">        return &quot;Critical&quot;;</span>
+    }
+
+    private String buildRecommendation(int weakCount, int reusedCount, int oldCount) {
+<span class="pc bpc" id="L401" title="2 of 6 branches missed.">        if (weakCount &gt; 0 &amp;&amp; weakCount &gt;= reusedCount &amp;&amp; weakCount &gt;= oldCount) {</span>
+<span class="fc" id="L402">            return String.format(&quot;You have %d weak password(s). Strengthen them to improve your security score.&quot;,</span>
+<span class="fc" id="L403">                    weakCount);</span>
+        }
+<span class="pc bpc" id="L405" title="1 of 4 branches missed.">        if (reusedCount &gt; 0 &amp;&amp; reusedCount &gt;= oldCount) {</span>
+<span class="fc" id="L406">            return String.format(&quot;You are reusing passwords across %d accounts. Use unique passwords for each account.&quot;,</span>
+<span class="fc" id="L407">                    reusedCount);</span>
+        }
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (oldCount &gt; 0) {</span>
+<span class="fc" id="L410">            return String.format(&quot;%d password(s) haven't been updated in over 90 days. Consider rotating them.&quot;,</span>
+<span class="fc" id="L411">                    oldCount);</span>
+        }
+<span class="fc" id="L413">        return &quot;Your vault looks healthy! Keep maintaining strong, unique passwords.&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LoginAttempt.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.security</a> &gt; <span class="el_source">LoginAttempt.java</span></div><h1>LoginAttempt.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.security;
+
+import com.revature.passwordmanager.model.user.User;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = &quot;login_attempts&quot;)
+<span class="pc bpc" id="L14" title="66 of 82 branches missed.">@Data</span>
+<span class="fc" id="L15">@Builder</span>
+<span class="fc" id="L16">@NoArgsConstructor</span>
+<span class="fc" id="L17">@AllArgsConstructor</span>
+public class LoginAttempt {
+
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+<span class="fc" id="L22">  private Long id;</span>
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = &quot;user_id&quot;)
+<span class="fc" id="L26">  private User user;</span>
+
+  @Column(name = &quot;username_attempted&quot;, nullable = false)
+<span class="fc" id="L29">  private String usernameAttempted;</span>
+
+  @Column(name = &quot;ip_address&quot;, length = 45)
+<span class="fc" id="L32">  private String ipAddress;</span>
+
+  @Column(name = &quot;device_info&quot;, length = 500)
+<span class="fc" id="L35">  private String deviceInfo;</span>
+
+  @Column(length = 200)
+<span class="fc" id="L38">  private String location;</span>
+
+  @Column(nullable = false)
+<span class="fc" id="L41">  private boolean successful;</span>
+
+  @Column(name = &quot;failure_reason&quot;, length = 200)
+<span class="fc" id="L44">  private String failureReason;</span>
+
+  @Column(name = &quot;risk_score&quot;)
+<span class="fc" id="L47">  private Integer riskScore;</span>
+
+  @Column(nullable = false)
+<span class="fc" id="L50">  private LocalDateTime timestamp;</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

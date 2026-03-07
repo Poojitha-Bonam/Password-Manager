@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VaultTimelineService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.analytics</a> &gt; <span class="el_source">VaultTimelineService.java</span></div><h1>VaultTimelineService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.analytics;
+
+import com.revature.passwordmanager.dto.response.*;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.analytics.TimelinePeriod;
+import com.revature.passwordmanager.model.security.AuditLog;
+import com.revature.passwordmanager.model.security.AuditLog.AuditAction;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.model.vault.VaultSnapshot;
+import com.revature.passwordmanager.repository.*;
+import com.revature.passwordmanager.service.security.AuditLogService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Core service for Feature 37: Vault Timeline Visualization.
+ * &lt;p&gt;
+ * Aggregates audit logs, vault snapshots, and share records into a chronological
+ * timeline of vault activity for the authenticated user. The timeline is purely
+ * read-only — it derives all data from existing records rather than maintaining
+ * its own state.
+ * &lt;/p&gt;
+ */
+@Service
+<span class="fc" id="L35">@RequiredArgsConstructor</span>
+public class VaultTimelineService {
+
+    private final AuditLogRepository auditLogRepository;
+    private final VaultEntryRepository vaultEntryRepository;
+    private final VaultSnapshotRepository vaultSnapshotRepository;
+    private final SecureShareRepository secureShareRepository;
+    private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
+    private final ActivityAggregator activityAggregator;
+
+<span class="fc" id="L46">    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd&quot;);</span>
+<span class="fc" id="L47">    private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern(&quot;yyyy-MM&quot;);</span>
+
+    /** Valid category filter values accepted by the timeline endpoint. */
+<span class="fc" id="L50">    private static final Set&lt;String&gt; VALID_CATEGORIES =</span>
+<span class="fc" id="L51">            Set.of(&quot;VAULT&quot;, &quot;AUTH&quot;, &quot;BREACH&quot;, &quot;SHARING&quot;, &quot;BACKUP&quot;, &quot;SECURITY&quot;);</span>
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the full vault timeline for the authenticated user,
+     * optionally filtered by time range and event category.
+     *
+     * @param username     the authenticated user
+     * @param days         how many days back to fetch (0 or null = all time)
+     * @param categoryFilter optional event category filter (VAULT, AUTH, BREACH, SHARING, BACKUP, SECURITY)
+     * @return paginated timeline response with category breakdown
+     */
+    @Transactional(readOnly = true)
+    public VaultTimelineResponse getTimeline(String username, Integer days, String categoryFilter) {
+        // Fix: validate category filter — return 400 for unknown values instead of silently empty list
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">        if (categoryFilter != null &amp;&amp; !categoryFilter.isBlank()</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                &amp;&amp; !VALID_CATEGORIES.contains(categoryFilter.toUpperCase())) {</span>
+<span class="nc" id="L69">            throw new IllegalArgumentException(</span>
+                    &quot;Invalid category filter '&quot; + categoryFilter + &quot;'. Valid values: &quot; + VALID_CATEGORIES);
+        }
+
+<span class="fc" id="L73">        User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L74">        List&lt;AuditLog&gt; logs = fetchLogs(user.getId(), days);</span>
+
+        // Audit log the timeline access (after fetching so it doesn't include itself)
+<span class="fc" id="L77">        auditLogService.logAction(username, AuditAction.TIMELINE_VIEWED, &quot;Viewed vault timeline&quot;);</span>
+
+<span class="fc" id="L79">        List&lt;TimelineEventDTO&gt; events = activityAggregator.aggregate(logs, user.getId());</span>
+
+        // Apply category filter if provided (now guaranteed to be a valid value)
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">        if (categoryFilter != null &amp;&amp; !categoryFilter.isBlank()) {</span>
+<span class="fc" id="L83">            final String upperCategory = categoryFilter.toUpperCase();</span>
+<span class="fc" id="L84">            events = events.stream()</span>
+<span class="fc" id="L85">                    .filter(e -&gt; upperCategory.equalsIgnoreCase(e.getCategory()))</span>
+<span class="fc" id="L86">                    .collect(Collectors.toList());</span>
+        }
+
+<span class="fc" id="L89">        VaultTimelineResponse.CategoryBreakdown breakdown = computeCategoryBreakdown(events);</span>
+
+        // Use TimelinePeriod to compute accurate period label, start, and end dates
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        LocalDateTime earliest = logs.isEmpty() ? null</span>
+<span class="fc" id="L93">                : logs.get(logs.size() - 1).getTimestamp();</span>
+<span class="fc" id="L94">        TimelinePeriod period = TimelinePeriod.resolve(days, earliest);</span>
+
+<span class="fc" id="L96">        return VaultTimelineResponse.builder()</span>
+<span class="fc" id="L97">                .events(events)</span>
+<span class="fc" id="L98">                .totalEvents(events.size())</span>
+<span class="fc" id="L99">                .period(period.getLabel())</span>
+<span class="fc" id="L100">                .startDate(period.getStart().format(DATE_FORMATTER))</span>
+<span class="fc" id="L101">                .endDate(period.getEnd().format(DATE_FORMATTER))</span>
+<span class="fc" id="L102">                .categoryBreakdown(breakdown)</span>
+<span class="fc" id="L103">                .build();</span>
+    }
+
+    /**
+     * Returns a high-level activity summary for the user's vault.
+     *
+     * @param username the authenticated user
+     * @return summary statistics and most-accessed entries
+     */
+    @Transactional(readOnly = true)
+    public TimelineSummaryResponse getSummary(String username) {
+<span class="fc" id="L114">        User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L115">        Long userId = user.getId();</span>
+<span class="fc" id="L116">        auditLogService.logAction(username, AuditAction.TIMELINE_VIEWED, &quot;Viewed timeline summary&quot;);</span>
+
+<span class="fc" id="L118">        List&lt;AuditLog&gt; allLogs = auditLogRepository.findByUserIdOrderByTimestampDesc(userId);</span>
+<span class="fc" id="L119">        List&lt;VaultSnapshot&gt; snapshots = vaultSnapshotRepository.findByVaultEntryUserIdOrderByChangedAtDesc(userId);</span>
+
+<span class="fc" id="L121">        int totalCreated = countByAction(allLogs, AuditAction.ENTRY_CREATED);</span>
+<span class="fc" id="L122">        int totalDeleted = countByAction(allLogs, AuditAction.ENTRY_DELETED);</span>
+<span class="fc" id="L123">        int totalPasswordChanges = snapshots.size();</span>
+<span class="fc" id="L124">        int totalSharesCreated = countByAction(allLogs, AuditAction.SHARE_CREATED);</span>
+<span class="fc" id="L125">        int totalBreachDetections = countByAction(allLogs, AuditAction.BREACH_DETECTED);</span>
+<span class="fc" id="L126">        int totalAuditEvents = allLogs.size();</span>
+
+<span class="fc" id="L128">        String mostActiveDayOfWeek = computeMostActiveDayOfWeek(allLogs);</span>
+<span class="fc" id="L129">        Integer mostActiveHour = computeMostActiveHour(allLogs);</span>
+
+<span class="fc" id="L131">        List&lt;TimelineSummaryResponse.EntryActivitySummary&gt; mostAccessed =</span>
+<span class="fc" id="L132">                computeMostAccessedEntries(allLogs, userId);</span>
+
+<span class="fc" id="L134">        List&lt;TimelineSummaryResponse.WeeklyActivityBucket&gt; weeklyActivity =</span>
+<span class="fc" id="L135">                computeWeeklyActivity(allLogs);</span>
+
+<span class="fc" id="L137">        return TimelineSummaryResponse.builder()</span>
+<span class="fc" id="L138">                .totalEntriesCreated(totalCreated)</span>
+<span class="fc" id="L139">                .totalPasswordChanges(totalPasswordChanges)</span>
+<span class="fc" id="L140">                .totalEntriesDeleted(totalDeleted)</span>
+<span class="fc" id="L141">                .totalSharesCreated(totalSharesCreated)</span>
+<span class="fc" id="L142">                .totalBreachDetections(totalBreachDetections)</span>
+<span class="fc" id="L143">                .totalAuditEvents(totalAuditEvents)</span>
+<span class="fc" id="L144">                .mostActiveDayOfWeek(mostActiveDayOfWeek)</span>
+<span class="fc" id="L145">                .mostActiveHour(mostActiveHour)</span>
+<span class="fc" id="L146">                .mostAccessedEntries(mostAccessed)</span>
+<span class="fc" id="L147">                .weeklyActivity(weeklyActivity)</span>
+<span class="fc" id="L148">                .build();</span>
+    }
+
+    /**
+     * Returns the timeline scoped to a single vault entry — showing its full lifecycle.
+     * The entry must belong to the authenticated user (checks ownership).
+     *
+     * @param username the authenticated user
+     * @param entryId  the vault entry id
+     * @return per-entry timeline response
+     */
+    @Transactional(readOnly = true)
+    public EntryTimelineResponse getEntryTimeline(String username, Long entryId) {
+<span class="fc" id="L161">        User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L163">        auditLogService.logAction(username, AuditAction.TIMELINE_VIEWED,</span>
+                &quot;Viewed timeline for entry id=&quot; + entryId);
+
+        // Security: verify the entry belongs to the authenticated user
+<span class="fc" id="L167">        VaultEntry entry = vaultEntryRepository.findByIdAndUserId(entryId, user.getId())</span>
+<span class="fc" id="L168">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found: &quot; + entryId));</span>
+
+        // Fetch all audit logs that reference this entry in their details (matched by title)
+<span class="fc" id="L171">        List&lt;AuditLog&gt; allUserLogs = auditLogRepository.findByUserIdOrderByTimestampDesc(user.getId());</span>
+<span class="fc" id="L172">        String entryTitle = entry.getTitle();</span>
+<span class="fc" id="L173">        List&lt;AuditLog&gt; entryLogs = allUserLogs.stream()</span>
+<span class="fc" id="L174">                .filter(log -&gt; isLogForEntry(log, entryId, entryTitle))</span>
+<span class="fc" id="L175">                .collect(Collectors.toList());</span>
+
+<span class="fc" id="L177">        List&lt;TimelineEventDTO&gt; events = activityAggregator.aggregate(entryLogs, user.getId());</span>
+
+        // Also count snapshots for this entry (password changes)
+<span class="fc" id="L180">        List&lt;VaultSnapshot&gt; snapshots = vaultSnapshotRepository.findByVaultEntryIdOrderByChangedAtDesc(entryId);</span>
+<span class="fc" id="L181">        int passwordChanges = snapshots.size();</span>
+
+<span class="fc" id="L183">        int passwordViews = countByAction(entryLogs, AuditAction.PASSWORD_VIEWED);</span>
+<span class="fc" id="L184">        int shareCount = (int) secureShareRepository.findByOwnerIdOrderByCreatedAtDesc(user.getId())</span>
+<span class="fc" id="L185">                .stream()</span>
+<span class="pc bpc" id="L186" title="2 of 4 branches missed.">                .filter(s -&gt; s.getVaultEntry() != null &amp;&amp; entryId.equals(s.getVaultEntry().getId()))</span>
+<span class="fc" id="L187">                .count();</span>
+
+<span class="fc" id="L189">        return EntryTimelineResponse.builder()</span>
+<span class="fc" id="L190">                .entryId(entryId)</span>
+<span class="fc" id="L191">                .entryTitle(entry.getTitle())</span>
+<span class="fc" id="L192">                .websiteUrl(entry.getWebsiteUrl())</span>
+<span class="fc" id="L193">                .deleted(Boolean.TRUE.equals(entry.getIsDeleted()))</span>
+<span class="fc" id="L194">                .events(events)</span>
+<span class="fc" id="L195">                .passwordChangeCount(passwordChanges)</span>
+<span class="fc" id="L196">                .passwordViewCount(passwordViews)</span>
+<span class="fc" id="L197">                .shareCount(shareCount)</span>
+<span class="fc" id="L198">                .build();</span>
+    }
+
+    /**
+     * Returns aggregated activity statistics suited for chart rendering.
+     *
+     * @param username the authenticated user
+     * @param days     number of days to include in the stats (0 = all time)
+     * @return statistics response with daily/monthly breakdowns and event type counts
+     */
+    @Transactional(readOnly = true)
+    public TimelineStatsResponse getStats(String username, Integer days) {
+<span class="fc" id="L210">        User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L211">        Long userId = user.getId();</span>
+<span class="fc" id="L212">        auditLogService.logAction(username, AuditAction.TIMELINE_VIEWED, &quot;Viewed timeline stats&quot;);</span>
+
+<span class="fc" id="L214">        List&lt;AuditLog&gt; logs = fetchLogs(userId, days);</span>
+<span class="fc" id="L215">        List&lt;TimelineEventDTO&gt; events = activityAggregator.aggregate(logs, userId);</span>
+
+<span class="fc" id="L217">        Map&lt;String, Integer&gt; byType = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L218">        Map&lt;String, Integer&gt; byCategory = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        for (TimelineEventDTO e : events) {</span>
+<span class="fc" id="L221">            byType.merge(e.getEventType(), 1, Integer::sum);</span>
+<span class="fc" id="L222">            byCategory.merge(e.getCategory(), 1, Integer::sum);</span>
+<span class="fc" id="L223">        }</span>
+
+<span class="fc" id="L225">        List&lt;TimelineStatsResponse.DailyActivityBucket&gt; dailyActivity = buildDailyBuckets(events);</span>
+<span class="fc" id="L226">        List&lt;TimelineStatsResponse.MonthlyActivityBucket&gt; monthlyActivity = buildMonthlyBuckets(events);</span>
+
+<span class="fc" id="L228">        int total = events.size();</span>
+<span class="fc" id="L229">        double avgPerDay = computeAvgPerDay(events, days);</span>
+<span class="fc" id="L230">        String peakDate = findPeakDate(dailyActivity);</span>
+<span class="fc" id="L231">        int peakCount = dailyActivity.stream()</span>
+<span class="fc" id="L232">                .mapToInt(TimelineStatsResponse.DailyActivityBucket::getCount)</span>
+<span class="fc" id="L233">                .max().orElse(0);</span>
+
+<span class="fc" id="L235">        return TimelineStatsResponse.builder()</span>
+<span class="fc" id="L236">                .eventsByType(byType)</span>
+<span class="fc" id="L237">                .eventsByCategory(byCategory)</span>
+<span class="fc" id="L238">                .dailyActivity(dailyActivity)</span>
+<span class="fc" id="L239">                .monthlyActivity(monthlyActivity)</span>
+<span class="fc" id="L240">                .totalEvents(total)</span>
+<span class="fc" id="L241">                .averageEventsPerDay(avgPerDay)</span>
+<span class="fc" id="L242">                .peakActivityDate(peakDate)</span>
+<span class="fc" id="L243">                .peakActivityCount(peakCount)</span>
+<span class="fc" id="L244">                .build();</span>
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private List&lt;AuditLog&gt; fetchLogs(Long userId, Integer days) {
+<span class="pc bpc" id="L250" title="1 of 4 branches missed.">        if (days == null || days &lt;= 0) {</span>
+<span class="fc" id="L251">            return auditLogRepository.findByUserIdOrderByTimestampDesc(userId);</span>
+        }
+<span class="fc" id="L253">        LocalDateTime since = LocalDateTime.now().minusDays(days);</span>
+<span class="fc" id="L254">        return auditLogRepository.findByUserIdAndTimestampAfter(userId, since);</span>
+    }
+
+    private int countByAction(List&lt;AuditLog&gt; logs, AuditAction action) {
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        return (int) logs.stream().filter(l -&gt; l.getAction() == action).count();</span>
+    }
+
+    private VaultTimelineResponse.CategoryBreakdown computeCategoryBreakdown(List&lt;TimelineEventDTO&gt; events) {
+<span class="fc" id="L262">        int vault = 0, security = 0, sharing = 0, auth = 0, breach = 0, backup = 0;</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        for (TimelineEventDTO e : events) {</span>
+<span class="pc bpc" id="L264" title="3 of 7 branches missed.">            switch (e.getCategory()) {</span>
+<span class="fc" id="L265">                case &quot;VAULT&quot; -&gt; vault++;</span>
+<span class="nc" id="L266">                case &quot;SECURITY&quot; -&gt; security++;</span>
+<span class="fc" id="L267">                case &quot;SHARING&quot; -&gt; sharing++;</span>
+<span class="fc" id="L268">                case &quot;AUTH&quot; -&gt; auth++;</span>
+<span class="fc" id="L269">                case &quot;BREACH&quot; -&gt; breach++;</span>
+<span class="nc" id="L270">                case &quot;BACKUP&quot; -&gt; backup++;</span>
+            }
+<span class="fc" id="L272">        }</span>
+<span class="fc" id="L273">        return VaultTimelineResponse.CategoryBreakdown.builder()</span>
+<span class="fc" id="L274">                .vaultEvents(vault)</span>
+<span class="fc" id="L275">                .securityEvents(security)</span>
+<span class="fc" id="L276">                .sharingEvents(sharing)</span>
+<span class="fc" id="L277">                .authEvents(auth)</span>
+<span class="fc" id="L278">                .breachEvents(breach)</span>
+<span class="fc" id="L279">                .backupEvents(backup)</span>
+<span class="fc" id="L280">                .build();</span>
+    }
+
+    private String deriveStartDate(List&lt;AuditLog&gt; logs) {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        return logs.isEmpty()</span>
+<span class="nc" id="L285">                ? LocalDateTime.now().format(DATE_FORMATTER)</span>
+<span class="nc" id="L286">                : logs.get(logs.size() - 1).getTimestamp().format(DATE_FORMATTER);</span>
+    }
+
+    private String computeMostActiveDayOfWeek(List&lt;AuditLog&gt; logs) {
+        // Fix: return null for empty log sets instead of defaulting to &quot;Sunday&quot;
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        if (logs.isEmpty()) return null;</span>
+<span class="fc" id="L292">        int[] counts = new int[7];</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        for (AuditLog log : logs) {</span>
+<span class="fc" id="L294">            int dayIdx = log.getTimestamp().getDayOfWeek().getValue() % 7; // 0=Sun</span>
+<span class="fc" id="L295">            counts[dayIdx]++;</span>
+<span class="fc" id="L296">        }</span>
+<span class="fc" id="L297">        int maxIdx = 0;</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        for (int i = 1; i &lt; 7; i++) {</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">            if (counts[i] &gt; counts[maxIdx]) maxIdx = i;</span>
+        }
+        // Convert back: index 0 = Sunday (ISO Sunday = 7, getValue()%7 = 0)
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">        int javaDayVal = maxIdx == 0 ? 7 : maxIdx;</span>
+<span class="fc" id="L303">        return DayOfWeek.of(javaDayVal).getDisplayName(TextStyle.FULL, Locale.getDefault());</span>
+    }
+
+    private Integer computeMostActiveHour(List&lt;AuditLog&gt; logs) {
+        // Fix: return null for empty log sets instead of defaulting to midnight (0)
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (logs.isEmpty()) return null;</span>
+<span class="fc" id="L309">        int[] counts = new int[24];</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">        for (AuditLog log : logs) {</span>
+<span class="fc" id="L311">            counts[log.getTimestamp().getHour()]++;</span>
+<span class="fc" id="L312">        }</span>
+<span class="fc" id="L313">        int maxHour = 0;</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        for (int i = 1; i &lt; 24; i++) {</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">            if (counts[i] &gt; counts[maxHour]) maxHour = i;</span>
+        }
+<span class="fc" id="L317">        return maxHour;</span>
+    }
+
+    private List&lt;TimelineSummaryResponse.EntryActivitySummary&gt; computeMostAccessedEntries(
+            List&lt;AuditLog&gt; allLogs, Long userId) {
+
+        // Count PASSWORD_VIEWED + ENTRY_UPDATED events per entry title extracted from details
+<span class="fc" id="L324">        Map&lt;String, Integer&gt; titleAccessCounts = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        for (AuditLog log : allLogs) {</span>
+<span class="pc bpc" id="L326" title="2 of 4 branches missed.">            if (log.getAction() == AuditAction.PASSWORD_VIEWED || log.getAction() == AuditAction.ENTRY_UPDATED) {</span>
+<span class="nc" id="L327">                String title = activityAggregator.extractEntryTitle(log.getDetails(), log.getAction());</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">                if (title != null) {</span>
+<span class="nc" id="L329">                    titleAccessCounts.merge(title, 1, Integer::sum);</span>
+                }
+            }
+<span class="fc" id="L332">        }</span>
+
+        // Resolve titles -&gt; entries via the title cache for id/websiteUrl
+<span class="fc" id="L335">        Map&lt;String, VaultEntry&gt; titleCache = activityAggregator.buildTitleCache(userId);</span>
+
+<span class="fc" id="L337">        return titleAccessCounts.entrySet().stream()</span>
+<span class="fc" id="L338">                .sorted(Map.Entry.&lt;String, Integer&gt;comparingByValue().reversed())</span>
+<span class="fc" id="L339">                .limit(5)</span>
+<span class="fc" id="L340">                .map(e -&gt; {</span>
+<span class="nc" id="L341">                    VaultEntry entry = titleCache.get(e.getKey().toLowerCase());</span>
+<span class="nc" id="L342">                    return TimelineSummaryResponse.EntryActivitySummary.builder()</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">                            .entryId(entry != null ? entry.getId() : null)</span>
+<span class="nc" id="L344">                            .entryTitle(e.getKey())</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">                            .websiteUrl(entry != null ? entry.getWebsiteUrl() : null)</span>
+<span class="nc" id="L346">                            .accessCount(e.getValue())</span>
+<span class="nc" id="L347">                            .build();</span>
+                })
+<span class="fc" id="L349">                .collect(Collectors.toList());</span>
+    }
+
+    private List&lt;TimelineSummaryResponse.WeeklyActivityBucket&gt; computeWeeklyActivity(List&lt;AuditLog&gt; allLogs) {
+        // Build buckets for last 12 weeks
+<span class="fc" id="L354">        LocalDate today = LocalDate.now();</span>
+<span class="fc" id="L355">        LocalDate startOfWindow = today.minusWeeks(12);</span>
+
+<span class="fc" id="L357">        Map&lt;LocalDate, Integer&gt; weekBuckets = new LinkedHashMap&lt;&gt;();</span>
+        // Initialize all 12 weekly buckets (week starting Monday)
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        for (int w = 11; w &gt;= 0; w--) {</span>
+<span class="fc" id="L360">            LocalDate weekStart = today.minusWeeks(w).with(DayOfWeek.MONDAY);</span>
+<span class="fc" id="L361">            weekBuckets.put(weekStart, 0);</span>
+        }
+
+<span class="fc bfc" id="L364" title="All 2 branches covered.">        for (AuditLog log : allLogs) {</span>
+<span class="fc" id="L365">            LocalDate logDate = log.getTimestamp().toLocalDate();</span>
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">            if (!logDate.isBefore(startOfWindow)) {</span>
+<span class="fc" id="L367">                LocalDate weekStart = logDate.with(DayOfWeek.MONDAY);</span>
+<span class="fc" id="L368">                weekBuckets.merge(weekStart, 1, Integer::sum);</span>
+            }
+<span class="fc" id="L370">        }</span>
+
+<span class="fc" id="L372">        return weekBuckets.entrySet().stream()</span>
+<span class="fc" id="L373">                .map(e -&gt; TimelineSummaryResponse.WeeklyActivityBucket.builder()</span>
+<span class="fc" id="L374">                        .weekStart(e.getKey().format(DATE_FORMATTER))</span>
+<span class="fc" id="L375">                        .eventCount(e.getValue())</span>
+<span class="fc" id="L376">                        .build())</span>
+<span class="fc" id="L377">                .collect(Collectors.toList());</span>
+    }
+
+    private boolean isLogForEntry(AuditLog log, Long entryId, String entryTitle) {
+<span class="fc" id="L381">        AuditAction action = log.getAction();</span>
+        // Only include vault and sharing actions that reference entries
+<span class="pc bpc" id="L383" title="8 of 18 branches missed.">        if (action != AuditAction.ENTRY_CREATED &amp;&amp; action != AuditAction.ENTRY_UPDATED</span>
+                &amp;&amp; action != AuditAction.ENTRY_DELETED &amp;&amp; action != AuditAction.ENTRY_RESTORED
+                &amp;&amp; action != AuditAction.PASSWORD_VIEWED &amp;&amp; action != AuditAction.SHARE_CREATED
+                &amp;&amp; action != AuditAction.SHARE_REVOKED &amp;&amp; action != AuditAction.BREACH_DETECTED
+                &amp;&amp; action != AuditAction.BREACH_RESOLVED) {
+<span class="fc" id="L388">            return false;</span>
+        }
+        // Match by entry title extracted from details
+<span class="fc" id="L391">        String extractedTitle = activityAggregator.extractEntryTitle(log.getDetails(), action);</span>
+<span class="pc bpc" id="L392" title="2 of 4 branches missed.">        return extractedTitle != null &amp;&amp; extractedTitle.equalsIgnoreCase(entryTitle);</span>
+    }
+
+    private List&lt;TimelineStatsResponse.DailyActivityBucket&gt; buildDailyBuckets(
+            List&lt;TimelineEventDTO&gt; events) {
+<span class="fc" id="L397">        Map&lt;LocalDate, TimelineStatsResponse.DailyActivityBucket&gt; buckets = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">        for (TimelineEventDTO event : events) {</span>
+<span class="fc" id="L399">            LocalDate date = event.getTimestamp().toLocalDate();</span>
+<span class="fc" id="L400">            buckets.computeIfAbsent(date, d -&gt; TimelineStatsResponse.DailyActivityBucket.builder()</span>
+<span class="fc" id="L401">                    .date(d.format(DATE_FORMATTER))</span>
+<span class="fc" id="L402">                    .count(0).vaultCount(0).securityCount(0)</span>
+<span class="fc" id="L403">                    .sharingCount(0).authCount(0).backupCount(0).breachCount(0)</span>
+<span class="fc" id="L404">                    .build());</span>
+<span class="fc" id="L405">            TimelineStatsResponse.DailyActivityBucket bucket = buckets.get(date);</span>
+<span class="fc" id="L406">            bucket.setCount(bucket.getCount() + 1);</span>
+            // Fix: BACKUP and BREACH now have dedicated counters; no events are silently dropped
+<span class="pc bpc" id="L408" title="5 of 7 branches missed.">            switch (event.getCategory()) {</span>
+<span class="fc" id="L409">                case &quot;VAULT&quot;    -&gt; bucket.setVaultCount(bucket.getVaultCount() + 1);</span>
+<span class="nc" id="L410">                case &quot;SECURITY&quot; -&gt; bucket.setSecurityCount(bucket.getSecurityCount() + 1);</span>
+<span class="nc" id="L411">                case &quot;BREACH&quot;   -&gt; bucket.setBreachCount(bucket.getBreachCount() + 1);</span>
+<span class="nc" id="L412">                case &quot;SHARING&quot;  -&gt; bucket.setSharingCount(bucket.getSharingCount() + 1);</span>
+<span class="fc" id="L413">                case &quot;AUTH&quot;     -&gt; bucket.setAuthCount(bucket.getAuthCount() + 1);</span>
+<span class="nc" id="L414">                case &quot;BACKUP&quot;   -&gt; bucket.setBackupCount(bucket.getBackupCount() + 1);</span>
+            }
+<span class="fc" id="L416">        }</span>
+<span class="fc" id="L417">        return new ArrayList&lt;&gt;(buckets.values());</span>
+    }
+
+    private List&lt;TimelineStatsResponse.MonthlyActivityBucket&gt; buildMonthlyBuckets(
+            List&lt;TimelineEventDTO&gt; events) {
+<span class="fc" id="L422">        Map&lt;String, Integer&gt; buckets = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">        for (TimelineEventDTO event : events) {</span>
+<span class="fc" id="L424">            String month = event.getTimestamp().format(MONTH_FORMATTER);</span>
+<span class="fc" id="L425">            buckets.merge(month, 1, Integer::sum);</span>
+<span class="fc" id="L426">        }</span>
+<span class="fc" id="L427">        return buckets.entrySet().stream()</span>
+<span class="fc" id="L428">                .map(e -&gt; TimelineStatsResponse.MonthlyActivityBucket.builder()</span>
+<span class="fc" id="L429">                        .month(e.getKey())</span>
+<span class="fc" id="L430">                        .count(e.getValue())</span>
+<span class="fc" id="L431">                        .build())</span>
+<span class="fc" id="L432">                .collect(Collectors.toList());</span>
+    }
+
+    private double computeAvgPerDay(List&lt;TimelineEventDTO&gt; events, Integer days) {
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        if (events.isEmpty()) return 0.0;</span>
+        long effectiveDays;
+<span class="pc bpc" id="L438" title="1 of 4 branches missed.">        if (days != null &amp;&amp; days &gt; 0) {</span>
+<span class="fc" id="L439">            effectiveDays = days;</span>
+        } else {
+            // Fix: compute actual span from the oldest to newest event instead of hardcoded 365
+<span class="fc" id="L442">            LocalDateTime oldest = events.stream()</span>
+<span class="fc" id="L443">                    .map(TimelineEventDTO::getTimestamp)</span>
+<span class="fc" id="L444">                    .min(Comparator.naturalOrder())</span>
+<span class="fc" id="L445">                    .orElse(LocalDateTime.now());</span>
+<span class="fc" id="L446">            effectiveDays = java.time.temporal.ChronoUnit.DAYS.between(oldest, LocalDateTime.now()) + 1;</span>
+<span class="pc bpc" id="L447" title="1 of 2 branches missed.">            if (effectiveDays &lt;= 0) effectiveDays = 1;</span>
+        }
+<span class="fc" id="L449">        return Math.round((double) events.size() / effectiveDays * 100.0) / 100.0;</span>
+    }
+
+    private String findPeakDate(List&lt;TimelineStatsResponse.DailyActivityBucket&gt; dailyBuckets) {
+<span class="fc" id="L453">        return dailyBuckets.stream()</span>
+<span class="fc" id="L454">                .max(Comparator.comparingInt(TimelineStatsResponse.DailyActivityBucket::getCount))</span>
+<span class="fc" id="L455">                .map(TimelineStatsResponse.DailyActivityBucket::getDate)</span>
+<span class="fc" id="L456">                .orElse(null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

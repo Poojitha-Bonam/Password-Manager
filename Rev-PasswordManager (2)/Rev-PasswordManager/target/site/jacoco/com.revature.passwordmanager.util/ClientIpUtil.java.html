@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClientIpUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.util</a> &gt; <span class="el_source">ClientIpUtil.java</span></div><h1>ClientIpUtil.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.util;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.stereotype.Component;
+
+/**
+ * Utility class for extracting the real client IP address from HTTP requests.
+ * Handles various proxy headers and falls back to remote address.
+ */
+@Component
+<span class="fc" id="L11">public class ClientIpUtil {</span>
+
+<span class="fc" id="L13">    private static final String[] IP_HEADER_CANDIDATES = {</span>
+        &quot;X-Forwarded-For&quot;,
+        &quot;X-Real-IP&quot;,
+        &quot;Proxy-Client-IP&quot;,
+        &quot;WL-Proxy-Client-IP&quot;,
+        &quot;HTTP_X_FORWARDED_FOR&quot;,
+        &quot;HTTP_X_FORWARDED&quot;,
+        &quot;HTTP_X_CLUSTER_CLIENT_IP&quot;,
+        &quot;HTTP_CLIENT_IP&quot;,
+        &quot;HTTP_FORWARDED_FOR&quot;,
+        &quot;HTTP_FORWARDED&quot;,
+        &quot;REMOTE_ADDR&quot;
+    };
+
+    /**
+     * Extracts the client IP address from the request, checking various proxy headers.
+     *
+     * @param request the HTTP request
+     * @return the client IP address, or &quot;unknown&quot; if not found
+     */
+    public String getClientIpAddress(HttpServletRequest request) {
+        // Check all proxy headers first
+<span class="nc bnc" id="L35" title="All 2 branches missed.">        for (String header : IP_HEADER_CANDIDATES) {</span>
+<span class="nc" id="L36">            String ip = request.getHeader(header);</span>
+<span class="nc bnc" id="L37" title="All 6 branches missed.">            if (ip != null &amp;&amp; !ip.isEmpty() &amp;&amp; !&quot;unknown&quot;.equalsIgnoreCase(ip)) {</span>
+                // X-Forwarded-For can have multiple IPs (client, proxy1, proxy2...), take the first one
+<span class="nc" id="L39">                return ip.split(&quot;,&quot;)[0].trim();</span>
+            }
+        }
+
+        // Fall back to remote address
+<span class="nc" id="L44">        String remoteAddr = request.getRemoteAddr();</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">        return remoteAddr != null ? remoteAddr : &quot;unknown&quot;;</span>
+    }
+
+    /**
+     * Checks if the IP address is a localhost or private network address.
+     *
+     * @param ipAddress the IP address to check
+     * @return true if localhost or private network
+     */
+    public boolean isLocalhost(String ipAddress) {
+<span class="fc bfc" id="L55" title="All 4 branches covered.">        if (ipAddress == null || ipAddress.isEmpty()) {</span>
+<span class="fc" id="L56">            return true;</span>
+        }
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        return ipAddress.equals(&quot;127.0.0.1&quot;) ||</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">               ipAddress.equals(&quot;0:0:0:0:0:0:0:1&quot;) ||</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">               ipAddress.equals(&quot;::1&quot;) ||</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">               ipAddress.startsWith(&quot;192.168.&quot;) ||</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">               ipAddress.startsWith(&quot;10.&quot;) ||</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">               ipAddress.startsWith(&quot;172.16.&quot;) ||</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.17.&quot;) ||</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.18.&quot;) ||</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.19.&quot;) ||</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.20.&quot;) ||</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.21.&quot;) ||</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.22.&quot;) ||</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.23.&quot;) ||</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.24.&quot;) ||</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.25.&quot;) ||</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.26.&quot;) ||</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.27.&quot;) ||</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.28.&quot;) ||</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.29.&quot;) ||</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.30.&quot;) ||</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;172.31.&quot;) ||</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;fc00:&quot;) ||</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">               ipAddress.startsWith(&quot;fe80:&quot;);</span>
+    }
+
+    /**
+     * Gets a display-friendly location string for an IP address.
+     * Returns &quot;Local Network&quot; for private IPs, &quot;Unknown&quot; for null/empty.
+     *
+     * @param ipAddress the IP address
+     * @return display-friendly location
+     */
+    public String getDisplayLocation(String ipAddress) {
+<span class="nc bnc" id="L92" title="All 6 branches missed.">        if (ipAddress == null || ipAddress.isEmpty() || &quot;unknown&quot;.equalsIgnoreCase(ipAddress)) {</span>
+<span class="nc" id="L93">            return &quot;Unknown&quot;;</span>
+        }
+
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (isLocalhost(ipAddress)) {</span>
+<span class="nc" id="L97">            return &quot;Local Network&quot;;</span>
+        }
+
+<span class="nc" id="L100">        return &quot;External&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

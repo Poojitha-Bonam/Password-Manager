@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VaultTimelineController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.controller</a> &gt; <span class="el_source">VaultTimelineController.java</span></div><h1>VaultTimelineController.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.controller;
+
+import com.revature.passwordmanager.dto.response.EntryTimelineResponse;
+import com.revature.passwordmanager.dto.response.TimelineStatsResponse;
+import com.revature.passwordmanager.dto.response.TimelineSummaryResponse;
+import com.revature.passwordmanager.dto.response.VaultTimelineResponse;
+import com.revature.passwordmanager.service.analytics.VaultTimelineService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * REST controller for Feature 37: Vault Timeline Visualization.
+ * &lt;p&gt;
+ * Exposes read-only endpoints for visualising the full history of vault activity.
+ * All endpoints require authentication — the timeline is user-scoped and never
+ * exposes another user's data.
+ * &lt;/p&gt;
+ *
+ * Base URL: {@code /api/timeline}
+ */
+@RestController
+@RequestMapping(&quot;/api/timeline&quot;)
+<span class="fc" id="L28">@RequiredArgsConstructor</span>
+@Tag(name = &quot;Vault Timeline&quot;, description = &quot;Feature 37 – Vault Timeline Visualization: chronological activity feed and analytics&quot;)
+public class VaultTimelineController {
+
+    private final VaultTimelineService timelineService;
+
+    /**
+     * Returns the full vault activity timeline for the authenticated user.
+     *
+     * &lt;p&gt;Example response event types:&lt;/p&gt;
+     * &lt;ul&gt;
+     *   &lt;li&gt;ENTRY_CREATED, ENTRY_UPDATED, ENTRY_DELETED, ENTRY_RESTORED&lt;/li&gt;
+     *   &lt;li&gt;PASSWORD_VIEWED, SHARE_CREATED, SHARE_ACCESSED, SHARE_REVOKED&lt;/li&gt;
+     *   &lt;li&gt;BREACH_DETECTED, BREACH_RESOLVED, VAULT_EXPORTED&lt;/li&gt;
+     *   &lt;li&gt;LOGIN, LOGOUT, LOGIN_FAILED&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param days           optional: number of days back to fetch (omit for all-time)
+     * @param categoryFilter optional: filter by category — VAULT, AUTH, BREACH, SHARING, BACKUP, SECURITY
+     * @return {@link VaultTimelineResponse} with events list and category breakdown
+     */
+    @Operation(
+        summary = &quot;Get full vault timeline&quot;,
+        description = &quot;Returns the complete chronological activity timeline for the authenticated user. &quot; +
+                      &quot;Optionally filter by time range (?days=N) and/or event category (?category=VAULT).&quot;
+    )
+    @GetMapping
+    public ResponseEntity&lt;VaultTimelineResponse&gt; getTimeline(
+            @Parameter(description = &quot;Number of past days to include (omit for all-time)&quot;)
+            @RequestParam(required = false) Integer days,
+            @Parameter(description = &quot;Filter by category: VAULT, AUTH, BREACH, SHARING, BACKUP, SECURITY&quot;)
+            @RequestParam(name = &quot;category&quot;, required = false) String categoryFilter) {
+<span class="fc" id="L60">        String username = getCurrentUsername();</span>
+<span class="fc" id="L61">        return ResponseEntity.ok(timelineService.getTimeline(username, days, categoryFilter));</span>
+    }
+
+    /**
+     * Returns a high-level summary of vault activity statistics.
+     *
+     * &lt;p&gt;Includes: total entries created/deleted, password changes, shares created,
+     * breach detections, most active day/hour, top-5 most accessed entries,
+     * and a 12-week activity histogram.&lt;/p&gt;
+     *
+     * @return {@link TimelineSummaryResponse} with aggregated statistics
+     */
+    @Operation(
+        summary = &quot;Get timeline activity summary&quot;,
+        description = &quot;Returns high-level summary statistics: total events by type, most active day/hour, &quot; +
+                      &quot;top accessed entries, and a 12-week weekly activity histogram.&quot;
+    )
+    @GetMapping(&quot;/summary&quot;)
+    public ResponseEntity&lt;TimelineSummaryResponse&gt; getSummary() {
+<span class="fc" id="L80">        String username = getCurrentUsername();</span>
+<span class="fc" id="L81">        return ResponseEntity.ok(timelineService.getSummary(username));</span>
+    }
+
+    /**
+     * Returns the timeline scoped to a single vault entry — showing its full lifecycle.
+     *
+     * &lt;p&gt;Includes creation, all updates, password views, sharing events, and deletion.
+     * Returns HTTP 404 if the entry does not exist or does not belong to the current user.&lt;/p&gt;
+     *
+     * @param entryId the vault entry id
+     * @return {@link EntryTimelineResponse} with per-entry events and counts
+     */
+    @Operation(
+        summary = &quot;Get timeline for a specific vault entry&quot;,
+        description = &quot;Returns the full lifecycle timeline for a single vault entry: creation, updates, &quot; +
+                      &quot;password views, share events, and deletion. Entry must belong to the current user.&quot;
+    )
+    @GetMapping(&quot;/entry/{entryId}&quot;)
+    public ResponseEntity&lt;EntryTimelineResponse&gt; getEntryTimeline(
+            @Parameter(description = &quot;Vault entry id&quot;)
+            @PathVariable Long entryId) {
+<span class="fc" id="L102">        String username = getCurrentUsername();</span>
+<span class="fc" id="L103">        return ResponseEntity.ok(timelineService.getEntryTimeline(username, entryId));</span>
+    }
+
+    /**
+     * Returns aggregated activity statistics optimised for chart rendering.
+     *
+     * &lt;p&gt;Provides daily and monthly activity buckets (with category breakdown per day),
+     * event counts by type and category, peak activity date, and averages.&lt;/p&gt;
+     *
+     * @param days optional: number of days to include in the stats window (omit for all-time)
+     * @return {@link TimelineStatsResponse} with chart-ready data
+     */
+    @Operation(
+        summary = &quot;Get timeline activity statistics&quot;,
+        description = &quot;Returns chart-ready aggregated statistics: daily activity with category breakdown, &quot; +
+                      &quot;monthly totals, event counts by type, peak activity date, and average events per day.&quot;
+    )
+    @GetMapping(&quot;/stats&quot;)
+    public ResponseEntity&lt;TimelineStatsResponse&gt; getStats(
+            @Parameter(description = &quot;Number of past days to include in stats (omit for all-time)&quot;)
+            @RequestParam(required = false) Integer days) {
+<span class="fc" id="L124">        String username = getCurrentUsername();</span>
+<span class="fc" id="L125">        return ResponseEntity.ok(timelineService.getStats(username, days));</span>
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+
+    private String getCurrentUsername() {
+<span class="fc" id="L131">        return SecurityContextHolder.getContext().getAuthentication().getName();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,638 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VaultService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.service.vault</a> &gt; <span class="el_source">VaultService.java</span></div><h1>VaultService.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.service.vault;
+
+import com.revature.passwordmanager.dto.request.VaultEntryRequest;
+import com.revature.passwordmanager.dto.response.VaultEntryDetailResponse;
+import com.revature.passwordmanager.dto.response.VaultEntryResponse;
+import com.revature.passwordmanager.exception.ResourceNotFoundException;
+import com.revature.passwordmanager.model.user.User;
+import com.revature.passwordmanager.model.vault.Category;
+import com.revature.passwordmanager.model.vault.Folder;
+import com.revature.passwordmanager.model.vault.VaultEntry;
+import com.revature.passwordmanager.repository.CategoryRepository;
+import com.revature.passwordmanager.repository.FolderRepository;
+import com.revature.passwordmanager.repository.SecureShareRepository;
+import com.revature.passwordmanager.repository.UserRepository;
+import com.revature.passwordmanager.repository.UserSettingsRepository;
+import com.revature.passwordmanager.repository.VaultEntryRepository;
+import com.revature.passwordmanager.security.JwtTokenProvider;
+import com.revature.passwordmanager.service.security.DuressService;
+import com.revature.passwordmanager.service.security.EncryptionService;
+import com.revature.passwordmanager.util.EncryptionUtil;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.crypto.SecretKey;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
+import com.revature.passwordmanager.dto.request.SensitiveAccessRequest;
+import com.revature.passwordmanager.exception.AuthenticationException;
+import static com.revature.passwordmanager.model.security.AuditLog.AuditAction.ENTRY_CREATED;
+import static com.revature.passwordmanager.model.security.AuditLog.AuditAction.ENTRY_DELETED;
+import static com.revature.passwordmanager.model.security.AuditLog.AuditAction.ENTRY_UPDATED;
+import static com.revature.passwordmanager.model.security.AuditLog.AuditAction.PASSWORD_VIEWED;
+import com.revature.passwordmanager.service.auth.TwoFactorService;
+import com.revature.passwordmanager.service.security.AuditLogService;
+import com.revature.passwordmanager.service.notification.NotificationService;
+import com.revature.passwordmanager.model.notification.Notification.NotificationType;
+
+@Service
+<span class="fc" id="L46">@RequiredArgsConstructor</span>
+public class VaultService {
+
+  private final VaultEntryRepository vaultEntryRepository;
+  private final UserRepository userRepository;
+  private final CategoryRepository categoryRepository;
+  private final FolderRepository folderRepository;
+  private final EncryptionService encryptionService;
+  private final EncryptionUtil encryptionUtil;
+  private final TwoFactorService twoFactorService;
+  private final VaultSnapshotService vaultSnapshotService;
+  private final AuditLogService auditLogService;
+  private final NotificationService notificationService;
+  private final UserSettingsRepository userSettingsRepository;
+  private final com.revature.passwordmanager.service.security.SecurityAuditService securityAuditService;
+  private final SecureShareRepository secureShareRepository;
+  private final com.revature.passwordmanager.util.PasswordStrengthCalculator passwordStrengthCalculator;
+  private final DuressService duressService;
+  private final JwtTokenProvider jwtTokenProvider;
+  private final AuthenticationManager authenticationManager;
+
+  private boolean isDuressMode() {
+<span class="fc" id="L68">    Authentication auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">    if (auth != null &amp;&amp; auth.getCredentials() instanceof String) {</span>
+<span class="fc" id="L70">      return jwtTokenProvider.isDuressToken((String) auth.getCredentials());</span>
+    }
+<span class="fc" id="L72">    return false;</span>
+  }
+
+  private void checkDuressMode() {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">    if (isDuressMode()) {</span>
+<span class="fc" id="L77">      throw new AuthenticationException(&quot;Action not permitted in duress mode&quot;);</span>
+    }
+<span class="fc" id="L79">  }</span>
+
+  @Transactional
+  public VaultEntryResponse createEntry(String username, VaultEntryRequest request) {
+<span class="fc" id="L83">    checkDuressMode();</span>
+<span class="fc" id="L84">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L85">    checkReadOnlyMode(user);</span>
+
+<span class="fc" id="L87">    Category category = null;</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">    if (request.getCategoryId() != null) {</span>
+<span class="fc" id="L89">      category = categoryRepository.findById(request.getCategoryId())</span>
+<span class="pc" id="L90">          .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Category not found&quot;));</span>
+    }
+
+<span class="fc" id="L93">    Folder folder = null;</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">    if (request.getFolderId() != null) {</span>
+<span class="fc" id="L95">      folder = folderRepository.findById(request.getFolderId())</span>
+<span class="pc" id="L96">          .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Folder not found&quot;));</span>
+    }
+
+<span class="fc" id="L99">    SecretKey key = encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">    String rawPassword = request.getPassword() != null ? request.getPassword() : &quot;&quot;;</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">    String rawUsername = request.getUsername() != null ? request.getUsername() : &quot;&quot;;</span>
+
+<span class="fc" id="L104">    String encryptedPassword = encryptionService.encrypt(rawPassword, key);</span>
+<span class="fc" id="L105">    String encryptedUsername = encryptionService.encrypt(rawUsername, key);</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">    String encryptedNotes = request.getNotes() != null ? encryptionService.encrypt(request.getNotes(), key) : null;</span>
+
+<span class="fc" id="L108">    VaultEntry entry = VaultEntry.builder()</span>
+<span class="fc" id="L109">        .user(user)</span>
+<span class="fc" id="L110">        .category(category)</span>
+<span class="fc" id="L111">        .folder(folder)</span>
+<span class="fc" id="L112">        .title(request.getTitle())</span>
+<span class="fc" id="L113">        .username(encryptedUsername)</span>
+<span class="fc" id="L114">        .password(encryptedPassword)</span>
+<span class="fc" id="L115">        .websiteUrl(request.getWebsiteUrl())</span>
+<span class="fc" id="L116">        .notes(encryptedNotes)</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">        .isFavorite(request.getIsFavorite() != null ? request.getIsFavorite() : false)</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        .isHighlySensitive(request.getIsHighlySensitive() != null ? request.getIsHighlySensitive() : false)</span>
+<span class="fc" id="L119">        .build();</span>
+
+<span class="fc" id="L121">    VaultEntry savedEntry = vaultEntryRepository.save(entry);</span>
+
+<span class="fc" id="L123">    auditLogService.logAction(username,</span>
+        ENTRY_CREATED,
+<span class="fc" id="L125">        &quot;Created entry: &quot; + savedEntry.getTitle());</span>
+
+<span class="fc" id="L127">    notificationService.createNotification(username, NotificationType.ACCOUNT_ACTIVITY, &quot;Vault Entry Created&quot;,</span>
+<span class="fc" id="L128">        &quot;You created a new vault entry: '&quot; + savedEntry.getTitle() + &quot;'.&quot;);</span>
+
+<span class="fc" id="L130">    securityAuditService.analyzeEntry(savedEntry);</span>
+
+<span class="fc" id="L132">    return mapToResponse(savedEntry);</span>
+  }
+
+  @Transactional(readOnly = true)
+  public VaultEntryDetailResponse getEntry(String username, Long entryId) {
+<span class="fc" id="L137">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L140">      VaultEntry dummy = duressService.generateDummyVault(user).stream()</span>
+<span class="nc" id="L141">          .filter(e -&gt; e.getId().equals(entryId))</span>
+<span class="nc" id="L142">          .findFirst()</span>
+<span class="nc" id="L143">          .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+<span class="nc" id="L144">      return mapToDetailResponse(dummy, dummy.getUsername(), &quot;***encrypted***&quot;, &quot;&quot;);</span>
+    }
+
+<span class="fc" id="L147">    VaultEntry entry = vaultEntryRepository.findByIdAndUserId(entryId, user.getId())</span>
+<span class="pc" id="L148">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+
+<span class="fc" id="L150">    SecretKey key = encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+    String decryptedPassword;
+    String decryptedUsername;
+    String decryptedNotes;
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">    if (Boolean.TRUE.equals(entry.getIsHighlySensitive())) {</span>
+      @SuppressWarnings(&quot;java:S2068&quot;) // Not a hardcoded password, just a placeholder string
+<span class="fc" id="L158">      String password = &quot;******&quot;;</span>
+<span class="fc" id="L159">      decryptedPassword = password;</span>
+<span class="fc" id="L160">      decryptedUsername = &quot;******&quot;;</span>
+<span class="fc" id="L161">      decryptedNotes = &quot;******&quot;;</span>
+<span class="fc" id="L162">    } else {</span>
+<span class="fc" id="L163">      decryptedPassword = encryptionService.decrypt(entry.getPassword(), key);</span>
+<span class="fc" id="L164">      decryptedUsername = encryptionService.decrypt(entry.getUsername(), key);</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">      decryptedNotes = entry.getNotes() != null ? encryptionService.decrypt(entry.getNotes(), key) : null;</span>
+    }
+
+<span class="fc" id="L168">    return mapToDetailResponse(entry, decryptedUsername, decryptedPassword, decryptedNotes);</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntryResponse&gt; getAllEntries(String username) {
+<span class="fc" id="L173">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc bfc" id="L175" title="All 2 branches covered.">    if (isDuressMode()) {</span>
+<span class="fc" id="L176">      SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L177">      return duressService.generateDummyVault(user).stream()</span>
+<span class="fc" id="L178">          .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L179">          .collect(Collectors.toList());</span>
+    }
+
+<span class="fc" id="L182">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsDeletedFalse(user.getId());</span>
+<span class="fc" id="L183">    SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L184">    return entries.stream()</span>
+<span class="fc" id="L185">        .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L186">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional
+  public VaultEntryResponse updateEntry(String username, Long entryId, VaultEntryRequest request) {
+<span class="fc" id="L191">    checkDuressMode();</span>
+<span class="fc" id="L192">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L194">    VaultEntry entry = vaultEntryRepository.findByIdAndUserId(entryId, user.getId())</span>
+<span class="pc" id="L195">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+<span class="fc" id="L196">    checkReadOnlyMode(user);</span>
+
+<span class="fc" id="L198">    SecretKey key = encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">    if (request.getTitle() != null)</span>
+<span class="fc" id="L201">      entry.setTitle(request.getTitle());</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">    if (request.getWebsiteUrl() != null)</span>
+<span class="nc" id="L203">      entry.setWebsiteUrl(request.getWebsiteUrl());</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">    if (request.getIsFavorite() != null)</span>
+<span class="nc" id="L205">      entry.setIsFavorite(request.getIsFavorite());</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">    if (request.getIsHighlySensitive() != null)</span>
+<span class="nc" id="L207">      entry.setIsHighlySensitive(request.getIsHighlySensitive());</span>
+
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">    if (request.getCategoryId() != null) {</span>
+<span class="nc" id="L210">      Category category = categoryRepository.findById(request.getCategoryId())</span>
+<span class="nc" id="L211">          .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Category not found&quot;));</span>
+<span class="nc" id="L212">      entry.setCategory(category);</span>
+    }
+
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">    if (request.getFolderId() != null) {</span>
+<span class="nc" id="L216">      Folder folder = folderRepository.findById(request.getFolderId())</span>
+<span class="nc" id="L217">          .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Folder not found&quot;));</span>
+<span class="nc" id="L218">      entry.setFolder(folder);</span>
+    }
+
+<span class="pc bpc" id="L221" title="2 of 4 branches missed.">    if (request.getPassword() != null &amp;&amp; !request.getPassword().equals(&quot;******&quot;)) {</span>
+
+<span class="fc" id="L223">      vaultSnapshotService.createSnapshot(entry);</span>
+<span class="fc" id="L224">      entry.setPassword(encryptionService.encrypt(request.getPassword(), key));</span>
+
+      // Gap 12 fix: auto-revoke all active shares for this entry since the
+      // shared ciphertext now holds the old (stale) password.
+<span class="fc" id="L228">      secureShareRepository.findActiveSharesByOwnerId(user.getId(), LocalDateTime.now())</span>
+<span class="fc" id="L229">          .stream()</span>
+<span class="pc" id="L230">          .filter(s -&gt; s.getVaultEntry().getId().equals(entry.getId()))</span>
+<span class="fc" id="L231">          .forEach(s -&gt; {</span>
+<span class="nc" id="L232">            s.setRevoked(true);</span>
+<span class="nc" id="L233">            secureShareRepository.save(s);</span>
+<span class="nc" id="L234">          });</span>
+    }
+<span class="pc bpc" id="L236" title="3 of 4 branches missed.">    if (request.getUsername() != null &amp;&amp; !request.getUsername().equals(&quot;******&quot;)) {</span>
+<span class="nc" id="L237">      entry.setUsername(encryptionService.encrypt(request.getUsername(), key));</span>
+    }
+<span class="pc bpc" id="L239" title="3 of 4 branches missed.">    if (request.getNotes() != null &amp;&amp; !request.getNotes().equals(&quot;******&quot;)) {</span>
+<span class="nc" id="L240">      entry.setNotes(encryptionService.encrypt(request.getNotes(), key));</span>
+    }
+
+<span class="fc" id="L243">    VaultEntry savedEntry = vaultEntryRepository.save(entry);</span>
+
+<span class="fc" id="L245">    auditLogService.logAction(username,</span>
+        ENTRY_UPDATED,
+<span class="fc" id="L247">        &quot;Updated entry: &quot; + savedEntry.getTitle());</span>
+
+<span class="fc" id="L249">    notificationService.createNotification(username, NotificationType.ACCOUNT_ACTIVITY, &quot;Vault Entry Updated&quot;,</span>
+<span class="fc" id="L250">        &quot;You updated the vault entry: '&quot; + savedEntry.getTitle() + &quot;'.&quot;);</span>
+
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">    if (request.getPassword() != null) {</span>
+<span class="fc" id="L253">      securityAuditService.analyzeEntry(savedEntry);</span>
+    }
+
+<span class="fc" id="L256">    return mapToResponse(savedEntry);</span>
+  }
+
+  @Transactional
+  public void deleteEntry(String username, Long entryId) {
+<span class="fc" id="L261">    checkDuressMode();</span>
+<span class="fc" id="L262">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L263">    checkReadOnlyMode(user);</span>
+
+<span class="fc" id="L265">    VaultEntry entry = vaultEntryRepository.findByIdAndUserId(entryId, user.getId())</span>
+<span class="pc" id="L266">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+
+<span class="fc" id="L268">    entry.setIsDeleted(true);</span>
+<span class="fc" id="L269">    entry.setDeletedAt(LocalDateTime.now());</span>
+<span class="fc" id="L270">    vaultEntryRepository.save(entry);</span>
+
+<span class="fc" id="L272">    auditLogService.logAction(username,</span>
+        ENTRY_DELETED,
+<span class="fc" id="L274">        &quot;Deleted entry: &quot; + entry.getTitle());</span>
+
+<span class="fc" id="L276">    notificationService.createNotification(username, NotificationType.ACCOUNT_ACTIVITY, &quot;Vault Entry Deleted&quot;,</span>
+<span class="fc" id="L277">        &quot;You moved the vault entry '&quot; + entry.getTitle() + &quot;' to the trash.&quot;);</span>
+<span class="fc" id="L278">  }</span>
+
+  @Transactional
+  public VaultEntryResponse toggleFavorite(String username, Long entryId) {
+<span class="fc" id="L282">    checkDuressMode();</span>
+<span class="fc" id="L283">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L284">    checkReadOnlyMode(user);</span>
+<span class="fc" id="L285">    VaultEntry entry = vaultEntryRepository.findByIdAndUserId(entryId, user.getId())</span>
+<span class="pc" id="L286">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">    entry.setIsFavorite(!Boolean.TRUE.equals(entry.getIsFavorite()));</span>
+<span class="fc" id="L289">    VaultEntry savedEntry = vaultEntryRepository.save(entry);</span>
+
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">    String actionNoun = Boolean.TRUE.equals(entry.getIsFavorite()) ? &quot;Favorited&quot; : &quot;Unfavorited&quot;;</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">    String actionVerb = Boolean.TRUE.equals(entry.getIsFavorite()) ? &quot;marked&quot; : &quot;removed&quot;;</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">    String preposition = Boolean.TRUE.equals(entry.getIsFavorite()) ? &quot;as a favorite&quot; : &quot;from favorites&quot;;</span>
+
+<span class="fc" id="L295">    notificationService.createNotification(username, NotificationType.ACCOUNT_ACTIVITY, &quot;Vault Entry &quot; + actionNoun,</span>
+<span class="fc" id="L296">        &quot;You &quot; + actionVerb + &quot; the vault entry '&quot; + entry.getTitle() + &quot;' &quot; + preposition + &quot;.&quot;);</span>
+
+<span class="fc" id="L298">    return mapToResponse(savedEntry);</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntryResponse&gt; getFavorites(String username) {
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L304">      return java.util.Collections.emptyList();</span>
+    }
+<span class="fc" id="L306">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L308">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndIsFavoriteTrueAndIsDeletedFalse(user.getId());</span>
+<span class="fc" id="L309">    SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L310">    return entries.stream()</span>
+<span class="fc" id="L311">        .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L312">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntryResponse&gt; getEntriesByFolder(String username, Long folderId) {
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L318">      return java.util.Collections.emptyList();</span>
+    }
+<span class="fc" id="L320">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L322">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.findByUserIdAndFolderIdAndIsDeletedFalse(user.getId(), folderId);</span>
+<span class="fc" id="L323">    SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L324">    return entries.stream()</span>
+<span class="fc" id="L325">        .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L326">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntryResponse&gt; getEntriesByCategory(String username, Long categoryId) {
+<span class="fc bfc" id="L331" title="All 2 branches covered.">    if (isDuressMode()) {</span>
+<span class="fc" id="L332">      return java.util.Collections.emptyList();</span>
+    }
+<span class="fc" id="L334">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+    // Using searchEntries instead since we need to make sure the item isn't
+    // deleted,
+    // and there is no findByUserIdAndCategoryIdAndIsDeletedFalse method.
+    // We could add it, but searchEntries handles it perfectly.
+<span class="fc" id="L340">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.searchEntries(</span>
+<span class="fc" id="L341">        user.getId(), null, categoryId, null, null, null);</span>
+
+<span class="fc" id="L343">    SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L344">    return entries.stream()</span>
+<span class="fc" id="L345">        .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L346">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntryResponse&gt; getRecentEntries(String username) {
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L352">      return java.util.Collections.emptyList();</span>
+    }
+<span class="fc" id="L354">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L356">    List&lt;VaultEntry&gt; entries = vaultEntryRepository</span>
+<span class="fc" id="L357">        .findTop10ByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(user.getId());</span>
+<span class="fc" id="L358">    SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L359">    return entries.stream()</span>
+<span class="fc" id="L360">        .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L361">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntryResponse&gt; getRecentlyUsedEntries(String username) {
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L367">      return java.util.Collections.emptyList();</span>
+    }
+<span class="fc" id="L369">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L371">    List&lt;VaultEntry&gt; entries = vaultEntryRepository</span>
+<span class="fc" id="L372">        .findTop10ByUserIdAndIsDeletedFalseOrderByUpdatedAtDesc(user.getId());</span>
+<span class="fc" id="L373">    SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L374">    return entries.stream()</span>
+<span class="fc" id="L375">        .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L376">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional
+  public VaultEntryResponse toggleSensitive(String username, Long entryId) {
+<span class="fc" id="L381">    checkDuressMode();</span>
+<span class="fc" id="L382">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L383">    checkReadOnlyMode(user);</span>
+
+<span class="fc" id="L385">    VaultEntry entry = vaultEntryRepository.findByIdAndUserId(entryId, user.getId())</span>
+<span class="pc" id="L386">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">    entry.setIsHighlySensitive(!Boolean.TRUE.equals(entry.getIsHighlySensitive()));</span>
+<span class="fc" id="L389">    VaultEntry savedEntry = vaultEntryRepository.save(entry);</span>
+
+<span class="fc" id="L391">    auditLogService.logAction(username,</span>
+        ENTRY_UPDATED,
+<span class="fc" id="L393">        &quot;Toggled sensitive flag for entry: &quot; + entry.getTitle());</span>
+
+<span class="fc" id="L395">    return mapToResponse(savedEntry);</span>
+  }
+
+  @Transactional(readOnly = true)
+  public List&lt;VaultEntryResponse&gt; searchEntries(String username, String keyword, Long categoryId,
+      Long folderId, Boolean isFavorite, Boolean isHighlySensitive, String sortBy, String sortDir) {
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L402">      return java.util.Collections.emptyList();</span>
+    }
+<span class="fc" id="L404">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L406">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.searchEntries(</span>
+<span class="fc" id="L407">        user.getId(), keyword, categoryId, folderId, isFavorite, isHighlySensitive);</span>
+
+<span class="pc bpc" id="L409" title="2 of 5 branches missed.">    Comparator&lt;VaultEntry&gt; comparator = switch (sortBy != null ? sortBy : &quot;title&quot;) {</span>
+      case &quot;createdAt&quot; -&gt;
+<span class="fc" id="L411">        Comparator.comparing(VaultEntry::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()));</span>
+      case &quot;updatedAt&quot; -&gt;
+<span class="nc" id="L413">        Comparator.comparing(VaultEntry::getUpdatedAt, Comparator.nullsLast(Comparator.naturalOrder()));</span>
+<span class="fc" id="L414">      default -&gt; Comparator.comparing(VaultEntry::getTitle, String.CASE_INSENSITIVE_ORDER);</span>
+    };
+
+<span class="fc bfc" id="L417" title="All 2 branches covered.">    if (&quot;desc&quot;.equalsIgnoreCase(sortDir)) {</span>
+<span class="fc" id="L418">      comparator = comparator.reversed();</span>
+    }
+
+<span class="fc" id="L421">    SecretKey key = getSharedKeySafely(user);</span>
+<span class="fc" id="L422">    return entries.stream()</span>
+<span class="fc" id="L423">        .sorted(comparator)</span>
+<span class="fc" id="L424">        .map(e -&gt; mapToResponseWithKey(e, key))</span>
+<span class="fc" id="L425">        .collect(Collectors.toList());</span>
+  }
+
+  @Transactional
+  public void bulkDelete(String username, List&lt;Long&gt; ids) {
+<span class="fc" id="L430">    checkDuressMode();</span>
+<span class="fc" id="L431">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="fc" id="L432">    checkReadOnlyMode(user);</span>
+<span class="fc" id="L433">    List&lt;VaultEntry&gt; entries = vaultEntryRepository.findAllById(ids);</span>
+
+<span class="fc" id="L435">    entries.stream()</span>
+<span class="pc bpc" id="L436" title="1 of 2 branches missed.">        .filter(e -&gt; !e.getUser().getId().equals(user.getId()))</span>
+<span class="fc" id="L437">        .findAny()</span>
+<span class="fc" id="L438">        .ifPresent(e -&gt; {</span>
+<span class="nc" id="L439">          throw new ResourceNotFoundException(&quot;Vault entry not found or access denied&quot;);</span>
+        });
+
+<span class="fc" id="L442">    LocalDateTime now = LocalDateTime.now();</span>
+<span class="fc" id="L443">    entries.forEach(e -&gt; {</span>
+<span class="fc" id="L444">      e.setIsDeleted(true);</span>
+<span class="fc" id="L445">      e.setDeletedAt(now);</span>
+<span class="fc" id="L446">      auditLogService.logAction(username,</span>
+          ENTRY_DELETED,
+<span class="fc" id="L448">          &quot;Deleted entry: &quot; + e.getTitle());</span>
+<span class="fc" id="L449">      notificationService.createNotification(username, NotificationType.ACCOUNT_ACTIVITY, &quot;Vault Entry Deleted&quot;,</span>
+<span class="fc" id="L450">          &quot;You moved the vault entry '&quot; + e.getTitle() + &quot;' to the trash.&quot;);</span>
+<span class="fc" id="L451">    });</span>
+<span class="fc" id="L452">    vaultEntryRepository.saveAll(entries);</span>
+<span class="fc" id="L453">  }</span>
+
+  @Transactional(readOnly = true)
+  public String getPassword(String username, Long id) {
+<span class="fc" id="L457">    System.out.println(&quot;getPassword: start - username=&quot; + username + &quot;, id=&quot; + id);</span>
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L459">      return &quot;***encrypted***&quot;;</span>
+    }
+
+<span class="fc" id="L462">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L464">    VaultEntry entry = vaultEntryRepository.findByIdAndUserId(id, user.getId())</span>
+<span class="pc" id="L465">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+
+<span class="fc bfc" id="L467" title="All 2 branches covered.">    if (Boolean.TRUE.equals(entry.getIsHighlySensitive())) {</span>
+<span class="fc" id="L468">      throw new AuthenticationException(</span>
+          &quot;Sensitive entry requires authentication&quot;);
+    }
+
+<span class="fc" id="L472">    auditLogService.logAction(username,</span>
+        PASSWORD_VIEWED,
+<span class="fc" id="L474">        &quot;Viewed password for entry: &quot; + entry.getTitle());</span>
+
+<span class="fc" id="L476">    SecretKey key = encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+
+<span class="fc" id="L478">    return encryptionService.decrypt(entry.getPassword(), key);</span>
+  }
+
+  @Transactional(readOnly = true)
+  public VaultEntryDetailResponse accessSensitiveEntry(String username, Long entryId,
+      SensitiveAccessRequest request) {
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">    if (isDuressMode()) {</span>
+<span class="nc" id="L485">      throw new AuthenticationException(&quot;Invalid master password&quot;);</span>
+    }
+<span class="fc" id="L487">    User user = userRepository.findByUsernameOrThrow(username);</span>
+
+<span class="fc" id="L489">    VaultEntry entry = vaultEntryRepository.findByIdAndUserId(entryId, user.getId())</span>
+<span class="pc" id="L490">        .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Vault entry not found&quot;));</span>
+
+    try {
+<span class="fc" id="L493">      authenticationManager.authenticate(</span>
+<span class="fc" id="L494">          new UsernamePasswordAuthenticationToken(user.getUsername(), request.getMasterPassword()));</span>
+<span class="fc" id="L495">    } catch (org.springframework.security.core.AuthenticationException e) {</span>
+<span class="fc" id="L496">      throw new AuthenticationException(&quot;Invalid master password&quot;);</span>
+<span class="fc" id="L497">    }</span>
+
+    SecretKey key;
+    try {
+<span class="fc" id="L501">      key = encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+<span class="nc" id="L502">    } catch (Exception e) {</span>
+<span class="nc" id="L503">      throw new AuthenticationException(&quot;Encryption configuration error&quot;);</span>
+<span class="fc" id="L504">    }</span>
+
+<span class="pc bpc" id="L506" title="1 of 2 branches missed.">    if (user.is2faEnabled()) {</span>
+<span class="nc bnc" id="L507" title="All 4 branches missed.">      if (request.getOtpToken() == null || request.getOtpToken().isBlank()) {</span>
+<span class="nc" id="L508">        throw new AuthenticationException(&quot;OTP is required&quot;);</span>
+      }
+<span class="nc bnc" id="L510" title="All 2 branches missed.">      if (!twoFactorService.verifyCode(user, request.getOtpToken())) {</span>
+<span class="nc" id="L511">        throw new AuthenticationException(&quot;Invalid OTP&quot;);</span>
+      }
+    }
+
+    String decryptedPassword;
+    String decryptedUsername;
+    String decryptedNotes;
+
+    try {
+<span class="fc" id="L520">      decryptedPassword = encryptionService.decrypt(entry.getPassword(), key);</span>
+<span class="fc" id="L521">      decryptedUsername = encryptionService.decrypt(entry.getUsername(), key);</span>
+<span class="pc bpc" id="L522" title="1 of 2 branches missed.">      decryptedNotes = entry.getNotes() != null ? encryptionService.decrypt(entry.getNotes(), key) : null;</span>
+<span class="nc" id="L523">    } catch (Exception e) {</span>
+<span class="nc" id="L524">      throw new AuthenticationException(</span>
+          &quot;Invalid master password or encryption error&quot;);
+<span class="fc" id="L526">    }</span>
+
+<span class="fc" id="L528">    return mapToDetailResponse(entry, decryptedUsername, decryptedPassword, decryptedNotes);</span>
+  }
+
+  private SecretKey getSharedKeySafely(User user) {
+    try {
+<span class="fc" id="L533">      return encryptionUtil.deriveKey(user.getMasterPasswordHash(), user.getSalt());</span>
+<span class="nc" id="L534">    } catch (Exception e) {</span>
+<span class="nc" id="L535">      return null;</span>
+    }
+  }
+
+  private VaultEntryResponse mapToResponseWithKey(VaultEntry entry, SecretKey key) {
+<span class="fc" id="L540">    int score = 0;</span>
+<span class="fc" id="L541">    String label = null;</span>
+<span class="fc bfc" id="L542" title="All 2 branches covered.">    if (key != null) {</span>
+      try {
+<span class="fc" id="L544">        String pwd = encryptionService.decrypt(entry.getPassword(), key);</span>
+<span class="pc bpc" id="L545" title="3 of 4 branches missed.">        if (pwd != null &amp;&amp; !pwd.isBlank()) {</span>
+<span class="nc" id="L546">          score = passwordStrengthCalculator.calculateScore(pwd);</span>
+<span class="nc" id="L547">          label = passwordStrengthCalculator.getStrengthLabel(score);</span>
+        }
+<span class="nc" id="L549">      } catch (Exception e) {</span>
+<span class="fc" id="L550">      }</span>
+    }
+
+<span class="fc" id="L553">    return VaultEntryResponse.builder()</span>
+<span class="fc" id="L554">        .id(entry.getId())</span>
+<span class="fc" id="L555">        .title(entry.getTitle())</span>
+<span class="fc" id="L556">        .username(&quot;******&quot;)</span>
+<span class="fc" id="L557">        .websiteUrl(entry.getWebsiteUrl())</span>
+<span class="pc bpc" id="L558" title="1 of 2 branches missed.">        .categoryId(entry.getCategory() != null ? entry.getCategory().getId() : null)</span>
+<span class="pc bpc" id="L559" title="1 of 2 branches missed.">        .categoryName(entry.getCategory() != null ? entry.getCategory().getName() : null)</span>
+<span class="pc bpc" id="L560" title="1 of 2 branches missed.">        .folderId(entry.getFolder() != null ? entry.getFolder().getId() : null)</span>
+<span class="pc bpc" id="L561" title="1 of 2 branches missed.">        .folderName(entry.getFolder() != null ? entry.getFolder().getName() : null)</span>
+<span class="fc" id="L562">        .isFavorite(entry.getIsFavorite())</span>
+<span class="fc" id="L563">        .createdAt(entry.getCreatedAt())</span>
+<span class="fc" id="L564">        .updatedAt(entry.getUpdatedAt())</span>
+<span class="fc" id="L565">        .strengthScore(score)</span>
+<span class="fc" id="L566">        .strengthLabel(label)</span>
+<span class="fc" id="L567">        .build();</span>
+  }
+
+  private VaultEntryResponse mapToResponse(VaultEntry entry) {
+<span class="fc" id="L571">    SecretKey key = getSharedKeySafely(entry.getUser());</span>
+<span class="fc" id="L572">    return mapToResponseWithKey(entry, key);</span>
+  }
+
+  private VaultEntryDetailResponse mapToDetailResponse(VaultEntry entry, String username, String password,
+      String notes) {
+
+<span class="fc" id="L578">    int score = 0;</span>
+<span class="fc" id="L579">    String label = &quot;Unknown&quot;;</span>
+    @SuppressWarnings(&quot;java:S2068&quot;) // Not a hardcoded password, just a placeholder string check
+<span class="pc bpc" id="L581" title="1 of 4 branches missed.">    boolean isPlaceholder = password != null &amp;&amp; password.equals(&quot;******&quot;);</span>
+<span class="pc bpc" id="L582" title="1 of 4 branches missed.">    if (password != null &amp;&amp; !isPlaceholder) {</span>
+<span class="fc" id="L583">      score = passwordStrengthCalculator.calculateScore(password);</span>
+<span class="fc" id="L584">      label = passwordStrengthCalculator.getStrengthLabel(score);</span>
+    }
+
+<span class="fc" id="L587">    return VaultEntryDetailResponse.builder()</span>
+<span class="fc" id="L588">        .id(entry.getId())</span>
+<span class="fc" id="L589">        .title(entry.getTitle())</span>
+<span class="fc" id="L590">        .username(username)</span>
+<span class="fc" id="L591">        .password(password)</span>
+<span class="fc" id="L592">        .websiteUrl(entry.getWebsiteUrl())</span>
+<span class="fc" id="L593">        .notes(notes)</span>
+<span class="pc bpc" id="L594" title="1 of 2 branches missed.">        .categoryId(entry.getCategory() != null ? entry.getCategory().getId() : null)</span>
+<span class="pc bpc" id="L595" title="1 of 2 branches missed.">        .categoryName(entry.getCategory() != null ? entry.getCategory().getName() : null)</span>
+<span class="pc bpc" id="L596" title="1 of 2 branches missed.">        .folderId(entry.getFolder() != null ? entry.getFolder().getId() : null)</span>
+<span class="pc bpc" id="L597" title="1 of 2 branches missed.">        .folderName(entry.getFolder() != null ? entry.getFolder().getName() : null)</span>
+<span class="fc" id="L598">        .isFavorite(entry.getIsFavorite())</span>
+<span class="fc" id="L599">        .isHighlySensitive(entry.getIsHighlySensitive())</span>
+<span class="fc" id="L600">        .requiresSensitiveAuth(</span>
+<span class="pc bpc" id="L601" title="1 of 6 branches missed.">            Boolean.TRUE.equals(entry.getIsHighlySensitive()) &amp;&amp; (password == null || isPlaceholder))</span>
+<span class="fc" id="L602">        .createdAt(entry.getCreatedAt())</span>
+<span class="fc" id="L603">        .updatedAt(entry.getUpdatedAt())</span>
+<span class="fc" id="L604">        .strengthScore(score)</span>
+<span class="fc" id="L605">        .strengthLabel(label)</span>
+<span class="fc" id="L606">        .build();</span>
+  }
+
+  private void checkReadOnlyMode(User user) {
+<span class="fc" id="L610">    userSettingsRepository.findByUserId(user.getId())</span>
+<span class="fc" id="L611">        .ifPresent(settings -&gt; {</span>
+<span class="fc bfc" id="L612" title="All 2 branches covered.">          if (Boolean.TRUE.equals(settings.getReadOnlyMode())) {</span>
+<span class="fc" id="L613">            throw new IllegalStateException(</span>
+                &quot;Vault is in read-only mode. Disable read-only mode in settings to make changes.&quot;);
+          }
+<span class="fc" id="L616">        });</span>
+<span class="fc" id="L617">  }</span>
+
+  @Transactional
+  public void bulkInsert(String username, List&lt;VaultEntry&gt; entries) {
+<span class="nc bnc" id="L621" title="All 4 branches missed.">    if (entries == null || entries.isEmpty())</span>
+<span class="nc" id="L622">      return;</span>
+
+<span class="nc" id="L624">    checkDuressMode();</span>
+<span class="nc" id="L625">    User user = userRepository.findByUsernameOrThrow(username);</span>
+<span class="nc" id="L626">    checkReadOnlyMode(user);</span>
+
+<span class="nc" id="L628">    List&lt;VaultEntry&gt; savedEntries = vaultEntryRepository.saveAll(entries);</span>
+
+<span class="nc" id="L630">    savedEntries.forEach(entry -&gt; {</span>
+<span class="nc" id="L631">      auditLogService.logAction(username,</span>
+          ENTRY_CREATED,
+<span class="nc" id="L633">          &quot;Imported entry: &quot; + entry.getTitle());</span>
+<span class="nc" id="L634">      securityAuditService.analyzeEntry(entry);</span>
+<span class="nc" id="L635">    });</span>
+<span class="nc" id="L636">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

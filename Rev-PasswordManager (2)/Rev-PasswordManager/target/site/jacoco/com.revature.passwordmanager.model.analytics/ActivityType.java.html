@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ActivityType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.analytics</a> &gt; <span class="el_source">ActivityType.java</span></div><h1>ActivityType.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.analytics;
+
+/**
+ * Canonical activity type enum for the Feature 37 Vault Timeline.
+ *
+ * &lt;p&gt;Maps raw {@link com.revature.passwordmanager.model.security.AuditLog.AuditAction}
+ * values to named, timeline-specific activity types. This decouples the timeline domain
+ * model from the raw audit action strings and gives a single place to define the full
+ * set of observable vault activities.&lt;/p&gt;
+ *
+ * &lt;p&gt;Each constant carries its display label and the high-level
+ * {@link TimelineCategory} it belongs to, enabling the frontend to group and
+ * colour-code events without coupling to string literals.&lt;/p&gt;
+ */
+<span class="fc" id="L15">public enum ActivityType {</span>
+
+    // ── Vault entry lifecycle ─────────────────────────────────────────────────
+<span class="fc" id="L18">    ENTRY_CREATED(&quot;Entry Created&quot;,         TimelineCategory.VAULT),</span>
+<span class="fc" id="L19">    ENTRY_UPDATED(&quot;Entry Updated&quot;,         TimelineCategory.VAULT),</span>
+<span class="fc" id="L20">    ENTRY_DELETED(&quot;Entry Deleted&quot;,         TimelineCategory.VAULT),</span>
+<span class="fc" id="L21">    ENTRY_RESTORED(&quot;Entry Restored&quot;,       TimelineCategory.VAULT),</span>
+<span class="fc" id="L22">    PASSWORD_VIEWED(&quot;Password Viewed&quot;,     TimelineCategory.VAULT),</span>
+
+    // ── Authentication ────────────────────────────────────────────────────────
+<span class="fc" id="L25">    LOGIN(&quot;Login&quot;,                         TimelineCategory.AUTH),</span>
+<span class="fc" id="L26">    LOGIN_FAILED(&quot;Failed Login Attempt&quot;,   TimelineCategory.AUTH),</span>
+<span class="fc" id="L27">    LOGOUT(&quot;Logout&quot;,                       TimelineCategory.AUTH),</span>
+
+    // ── Breach monitoring ─────────────────────────────────────────────────────
+<span class="fc" id="L30">    BREACH_SCAN_RUN(&quot;Breach Scan Run&quot;,     TimelineCategory.BREACH),</span>
+<span class="fc" id="L31">    BREACH_DETECTED(&quot;Breach Detected&quot;,     TimelineCategory.BREACH),</span>
+<span class="fc" id="L32">    BREACH_RESOLVED(&quot;Breach Resolved&quot;,     TimelineCategory.BREACH),</span>
+
+    // ── Secure sharing ────────────────────────────────────────────────────────
+<span class="fc" id="L35">    SHARE_CREATED(&quot;Share Created&quot;,         TimelineCategory.SHARING),</span>
+<span class="fc" id="L36">    SHARE_ACCESSED(&quot;Share Accessed&quot;,       TimelineCategory.SHARING),</span>
+<span class="fc" id="L37">    SHARE_REVOKED(&quot;Share Revoked&quot;,         TimelineCategory.SHARING),</span>
+
+    // ── Backup / export ───────────────────────────────────────────────────────
+<span class="fc" id="L40">    VAULT_EXPORTED(&quot;Vault Exported&quot;,       TimelineCategory.BACKUP),</span>
+
+    // ── Analytics / system ───────────────────────────────────────────────────
+<span class="fc" id="L43">    DASHBOARD_VIEWED(&quot;Dashboard Viewed&quot;,   TimelineCategory.SECURITY),</span>
+<span class="fc" id="L44">    TIMELINE_VIEWED(&quot;Timeline Viewed&quot;,     TimelineCategory.SECURITY);</span>
+
+    // ── Fields ────────────────────────────────────────────────────────────────
+
+    private final String displayLabel;
+    private final TimelineCategory category;
+
+<span class="fc" id="L51">    ActivityType(String displayLabel, TimelineCategory category) {</span>
+<span class="fc" id="L52">        this.displayLabel = displayLabel;</span>
+<span class="fc" id="L53">        this.category = category;</span>
+<span class="fc" id="L54">    }</span>
+
+    public String getDisplayLabel() {
+<span class="nc" id="L57">        return displayLabel;</span>
+    }
+
+    public TimelineCategory getCategory() {
+<span class="fc" id="L61">        return category;</span>
+    }
+
+    /**
+     * Safely maps an {@link com.revature.passwordmanager.model.security.AuditLog.AuditAction}
+     * name string to an {@link ActivityType}, returning {@code null} if the action
+     * has no corresponding timeline activity type.
+     *
+     * @param auditActionName the {@code AuditAction.name()} string
+     * @return the matching {@code ActivityType}, or {@code null}
+     */
+    public static ActivityType fromAuditAction(String auditActionName) {
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (auditActionName == null) return null;</span>
+        try {
+<span class="fc" id="L75">            return ActivityType.valueOf(auditActionName);</span>
+<span class="nc" id="L76">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L77">            return null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

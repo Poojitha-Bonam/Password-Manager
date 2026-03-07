@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Notification.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Rev-PasswordManager</a> &gt; <a href="index.source.html" class="el_package">com.revature.passwordmanager.model.notification</a> &gt; <span class="el_source">Notification.java</span></div><h1>Notification.java</h1><pre class="source lang-java linenums">package com.revature.passwordmanager.model.notification;
+
+import com.revature.passwordmanager.model.user.User;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = &quot;notifications&quot;)
+<span class="pc bpc" id="L14" title="43 of 58 branches missed.">@Data</span>
+<span class="fc bfc" id="L15" title="All 2 branches covered.">@Builder</span>
+<span class="fc" id="L16">@NoArgsConstructor</span>
+<span class="fc" id="L17">@AllArgsConstructor</span>
+public class Notification {
+
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+<span class="fc" id="L22">  private Long id;</span>
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = &quot;user_id&quot;, nullable = false)
+<span class="fc" id="L26">  private User user;</span>
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = &quot;notification_type&quot;, nullable = false, length = 50)
+<span class="fc" id="L30">  private NotificationType notificationType;</span>
+
+  @Column(nullable = false, length = 200)
+<span class="fc" id="L33">  private String title;</span>
+
+  @Column(nullable = false, length = 1000)
+<span class="fc" id="L36">  private String message;</span>
+
+  @Column(name = &quot;is_read&quot;)
+  @Builder.Default
+<span class="fc" id="L40">  private boolean isRead = false;</span>
+
+  @Column(name = &quot;created_at&quot;, nullable = false)
+<span class="fc" id="L43">  private LocalDateTime createdAt;</span>
+
+<span class="fc" id="L45">  public enum NotificationType {</span>
+<span class="fc" id="L46">    PASSWORD_EXPIRY,</span>
+<span class="fc" id="L47">    SECURITY_ALERT,</span>
+<span class="fc" id="L48">    BACKUP_REMINDER,</span>
+<span class="fc" id="L49">    SYSTEM_UPDATE,</span>
+<span class="fc" id="L50">    BREACH_DETECTED,</span>
+<span class="fc" id="L51">    ACCOUNT_ACTIVITY</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
