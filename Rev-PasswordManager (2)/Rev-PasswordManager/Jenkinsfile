@@ -37,39 +37,47 @@ pipeline {
             }
         }
 
-        stage('Build & Test') {
+        stage('Backend Build') {
             steps {
                 dir('Rev-PasswordManager (2)/Rev-PasswordManager') {
-                    stage('Backend Build') {
-                        script {
-                            runCommand('mvn -B -DskipTests clean package')
-                        }
+                    script {
+                        runCommand('mvn -B -DskipTests clean package')
                     }
+                }
+            }
+        }
 
-                    stage('Backend Tests') {
-                        script {
-                            runCommand('mvn -B test')
-                        }
-                        post {
-                            always {
-                                junit allowEmptyResults: true, testResults: 'target/surefire-reports/TEST-*.xml'
-                            }
-                        }
+        stage('Backend Tests') {
+            steps {
+                dir('Rev-PasswordManager (2)/Rev-PasswordManager') {
+                    script {
+                        runCommand('mvn -B test')
                     }
+                }
+            }
+            post {
+                always {
+                    dir('Rev-PasswordManager (2)/Rev-PasswordManager') {
+                        junit allowEmptyResults: true, testResults: 'target/surefire-reports/TEST-*.xml'
+                    }
+                }
+            }
+        }
 
-                    stage('Docker Build') {
-                        script {
-                            runCommand(
-                                """
-                                docker build -t ${APP_NAME}-backend:${IMAGE_TAG} .
-                                docker build -t ${APP_NAME}-frontend:${IMAGE_TAG} ./frontend
-                                """.trim(),
-                                """
-                                docker build -t ${APP_NAME}-backend:${IMAGE_TAG} .
-                                docker build -t ${APP_NAME}-frontend:${IMAGE_TAG} .\\frontend
-                                """.trim()
-                            )
-                        }
+        stage('Docker Build') {
+            steps {
+                dir('Rev-PasswordManager (2)/Rev-PasswordManager') {
+                    script {
+                        runCommand(
+                            """
+                            docker build -t ${APP_NAME}-backend:${IMAGE_TAG} .
+                            docker build -t ${APP_NAME}-frontend:${IMAGE_TAG} ./frontend
+                            """.trim(),
+                            """
+                            docker build -t ${APP_NAME}-backend:${IMAGE_TAG} .
+                            docker build -t ${APP_NAME}-frontend:${IMAGE_TAG} .\\frontend
+                            """.trim()
+                        )
                     }
                 }
             }
@@ -102,7 +110,7 @@ pipeline {
             }
         }
 
-        stage('Deploy To Auto Scaling Group') {
+        stage('Deploy To EC2') {
             when {
                 allOf {
                     branch 'main'
