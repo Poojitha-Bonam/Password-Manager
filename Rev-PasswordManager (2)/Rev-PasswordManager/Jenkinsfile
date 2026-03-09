@@ -129,8 +129,9 @@ pipeline {
                             "docker pull ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest",
                             "docker stop backend frontend 2>/dev/null || true",
                             "docker rm backend frontend 2>/dev/null || true",
-                            "docker run -d --name backend -p 8082:8082 --restart unless-stopped ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest",
-                            "docker run -d --name frontend -p 80:80 --restart unless-stopped ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest"
+                            "docker network create rev-net 2>/dev/null || true",
+                            "docker run -d --name backend --network rev-net -p 8080:8080 -p 8082:8082 --restart unless-stopped ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest",
+                            "docker run -d --name frontend --network rev-net -p 80:80 --restart unless-stopped ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest"
                           ]' \\
                           --output text
                         """.trim()
