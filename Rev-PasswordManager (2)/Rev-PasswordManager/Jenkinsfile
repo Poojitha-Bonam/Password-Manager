@@ -2,7 +2,8 @@ def runCommand(String unixCommand, String windowsCommand = null) {
     if (isUnix()) {
         sh unixCommand
     } else {
-        bat(windowsCommand ?: unixCommand)
+        // Force clear DOCKER_HOST to prevent TCP connection errors on Windows
+        bat "set DOCKER_HOST= && ${windowsCommand ?: unixCommand}"
     }
 }
 
