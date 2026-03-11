@@ -99,8 +99,8 @@ pipeline {
 
                     withCredentials([usernamePassword(
                         credentialsId: 'aws-credentials',
-                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         runCommand(
                             """
@@ -129,8 +129,8 @@ pipeline {
                     def instanceId = 'i-09558c01dae8e185c'
                     withCredentials([usernamePassword(
                         credentialsId: 'aws-credentials',
-                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         runCommand(
                             """
