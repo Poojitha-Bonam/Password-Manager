@@ -34,7 +34,7 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    env.IMAGE_TAG = env.GIT_COMMIT.take(12)
+                    env.IMAGE_TAG = env.GIT_COMMIT ? env.GIT_COMMIT.take(12) : 'latest'
                     env.ECR_REGISTRY = env.AWS_ACCOUNT_ID
                         ? "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
                         : ''
@@ -171,8 +171,9 @@ pipeline {
                     docker image rm ${APP_NAME}-frontend:${IMAGE_TAG} || true
                     """.trim(),
                     """
-                    docker image rm ${APP_NAME}-backend:${IMAGE_TAG}
-                    docker image rm ${APP_NAME}-frontend:${IMAGE_TAG}
+                    docker image rm ${APP_NAME}-backend:${IMAGE_TAG} -ErrorAction SilentlyContinue
+                    docker image rm ${APP_NAME}-frontend:${IMAGE_TAG} -ErrorAction SilentlyContinue
+                    \$global:LASTEXITCODE = 0
                     exit 0
                     """.trim()
                 )
