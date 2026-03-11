@@ -1,6 +1,6 @@
 project_name = "password-manager"
 environment  = "phase1"
-aws_region   = "us-east-1"
+aws_region   = "ap-south-2"
 
 app_domain_name = ""
 
