@@ -97,7 +97,7 @@ pipeline {
                         error('AWS_ACCOUNT_ID must be configured for the ECR push stage.')
                     }
 
-                    withCredentials([aws(
+                    withCredentials([usernamePassword(
                         credentialsId: 'aws-credentials',
                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
@@ -127,7 +127,7 @@ pipeline {
             steps {
                 script {
                     def instanceId = 'i-09558c01dae8e185c'
-                    withCredentials([aws(
+                    withCredentials([usernamePassword(
                         credentialsId: 'aws-credentials',
                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
