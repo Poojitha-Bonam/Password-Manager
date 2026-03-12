@@ -122,7 +122,7 @@ pipeline {
             }
             steps {
                 script {
-                    def ec2Host = '98.130.84.178'
+                    def ec2Host = '16.112.181.251'
                     def ec2User = 'ec2-user'
 
                     withCredentials([
