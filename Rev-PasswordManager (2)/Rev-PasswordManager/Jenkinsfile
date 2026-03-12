@@ -2,11 +2,7 @@ def runCommand(String unixCommand, String windowsCommand = null) {
     if (isUnix()) {
         sh unixCommand
     } else {
-        // Standard PowerShell execution for Windows
-        powershell """
-            \$env:DOCKER_HOST = ""
-            ${windowsCommand ?: unixCommand}
-        """
+        bat(windowsCommand ?: unixCommand)
     }
 }
 
@@ -18,13 +14,9 @@ pipeline {
         disableConcurrentBuilds()
         timestamps()
     }
-    tools {
-        maven 'Maven'
-    }
 
     environment {
-        APP_NAME = 'password-manager'
-        AWS_ACCOUNT_ID = "${env.AWS_ACCOUNT_ID ?: '822972071028'}"
+        APP_NAME = 'Rev-Password-Manager'
         AWS_REGION = "${env.AWS_REGION ?: 'ap-south-2'}"
         ECR_BACKEND_REPOSITORY = "${env.ECR_BACKEND_REPOSITORY ?: 'password-manager-phase1-backend'}"
         ECR_FRONTEND_REPOSITORY = "${env.ECR_FRONTEND_REPOSITORY ?: 'password-manager-phase1-frontend'}"
@@ -37,7 +29,7 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    env.IMAGE_TAG = env.GIT_COMMIT ? env.GIT_COMMIT.take(12) : 'latest'
+                    env.IMAGE_TAG = env.GIT_COMMIT.take(12)
                     env.ECR_REGISTRY = env.AWS_ACCOUNT_ID
                         ? "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
                         : ''
@@ -101,11 +93,7 @@ pipeline {
                         error('AWS_ACCOUNT_ID must be configured for the ECR push stage.')
                     }
 
-                    withCredentials([usernamePassword(
-                        credentialsId: 'aws-credentials',
-                        usernameVariable: 'AWS_ACCESS_KEY_ID',
-                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                    )]) {
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                         runCommand(
                             """
                             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
@@ -130,86 +118,32 @@ pipeline {
             }
             steps {
                 script {
-                    def ec2Host = '98.130.84.178'
-                    def ec2User = 'ec2-user'
-
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'aws-credentials',
-                            usernameVariable: 'AWS_ACCESS_KEY_ID',
-                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ),
-                        sshUserPrivateKey(
-                            credentialsId: 'ec2-ssh-key',
-                            keyFileVariable: 'SSH_KEY_FILE'
-                        )
-                    ]) {
-                        def deployScript = """#!/bin/bash
-set -e
-export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-export AWS_DEFAULT_REGION=${AWS_REGION}
-
-# Login to ECR
-aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-
-# Pull latest images
-docker pull ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest
-docker pull ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest
-
-# Cleanup old containers
-docker stop backend frontend 2>/dev/null || true
-docker rm backend frontend 2>/dev/null || true
-
-# Ensure network and DB exist
-docker network create rev-net 2>/dev/null || true
-docker run -d --name db --network rev-net \\
-  -e MYSQL_DATABASE=rev_password_manager \\
-  -e MYSQL_USER=admin -e MYSQL_PASSWORD=admin \\
-  -e MYSQL_ROOT_PASSWORD=root \\
-  -p 3306:3306 --restart unless-stopped mysql:8.0 2>/dev/null || true
-
-sleep 15
-
-# Start Backend
-docker run -d --name backend --network rev-net \\
-  -e SPRING_PROFILES_ACTIVE=docker \\
-  -e "SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/rev_password_manager?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true" \\
-  -e SPRING_DATASOURCE_USERNAME=admin \\
-  -e SPRING_DATASOURCE_PASSWORD=admin \\
-  -e CORS_ALLOWED_ORIGINS=http://${ec2Host} \\
-  -e SPRING_MAIL_HOST=smtp.gmail.com \\
-  -e SPRING_MAIL_PORT=587 \\
-  -e SPRING_MAIL_USERNAME=poojithabonam@gmail.com \\
-  -e "SPRING_MAIL_PASSWORD=aecc ccyo vnmo rnsj" \\
-  -e "JWT_SECRET=49ruIGq3wMbgVOzDyfdATPmaZotBcsYWXS61k7nxv8lNj2J0CFeiUpRQKHLE5h=" \\
-  -p 8080:8080 -p 8082:8082 --restart unless-stopped \\
-  ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest
-
-sleep 20
-
-# Start Frontend
-docker run -d --name frontend --network rev-net \\
-  -p 8081:80 --restart unless-stopped \\
-  ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest
-
-echo "=== Running containers ==="
-docker ps
+                    def instanceId = 'i-09558c01dae8e185c'
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        def ssmJson = """
+{
+  "Parameters": {
+    "commands": [
+      "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
+      "docker pull ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest",
+      "docker pull ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest",
+      "docker stop backend frontend 2>/dev/null || true",
+      "docker rm backend frontend 2>/dev/null || true",
+      "docker network create rev-net 2>/dev/null || true",
+      "docker run -d --name db --network rev-net -e MYSQL_DATABASE=rev_password_manager -e MYSQL_USER=admin -e MYSQL_PASSWORD=admin -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 --restart unless-stopped mysql:8.0 --innodb-buffer-pool-size=64M || true",
+      "docker run -d --name backend --network rev-net -e SPRING_PROFILES_ACTIVE=docker -e SPRING_DATASOURCE_URL='jdbc:mysql://db:3306/rev_password_manager?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true' -e SPRING_DATASOURCE_USERNAME=admin -e SPRING_DATASOURCE_PASSWORD=admin -e CORS_ALLOWED_ORIGINS=https://98.130.84.178 -e SPRING_MAIL_HOST=smtp.gmail.com -e SPRING_MAIL_PORT=587 -e SPRING_MAIL_USERNAME=poojithabonam@gmail.com -e SPRING_MAIL_PASSWORD='aecc ccyo vnmo rnsj' -e JWT_SECRET='49ruIGq3wMbgVOzDyfdATPmaZotBcsYWXS61k7nxv8lNj2J0CFeiUpRQKHLE5h=' -p 8080:8080 -p 8082:8082 --restart unless-stopped ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest",
+      "docker run -d --name frontend --network rev-net -p 80:80 --restart unless-stopped ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest"
+    ]
+  }
+}
 """
-                        writeFile file: 'deploy.sh', text: deployScript
-
-                        powershell """
-                            \$env:DOCKER_HOST = ""
-                            scp -i "\$env:SSH_KEY_FILE" -o StrictHostKeyChecking=no deploy.sh ${ec2User}@${ec2Host}:/tmp/deploy.sh
-                            ssh -i "\$env:SSH_KEY_FILE" -o StrictHostKeyChecking=no ${ec2User}@${ec2Host} "chmod +x /tmp/deploy.sh && bash /tmp/deploy.sh"
-                        """
+                        writeFile(file: 'ssm-input.json', text: ssmJson)
+                        runCommand("aws ssm send-command --region ${AWS_REGION} --instance-ids ${instanceId} --document-name \"AWS-RunShellScript\" --cli-input-json file://ssm-input.json --output text")
                     }
                 }
             }
         }
     }
-
-
 
     post {
         always {
@@ -223,9 +157,8 @@ docker ps
                     docker image rm ${APP_NAME}-frontend:${IMAGE_TAG} || true
                     """.trim(),
                     """
-                    try { docker image rm ${APP_NAME}-backend:${IMAGE_TAG} } catch {}
-                    try { docker image rm ${APP_NAME}-frontend:${IMAGE_TAG} } catch {}
-                    \$global:LASTEXITCODE = 0
+                    docker image rm ${APP_NAME}-backend:${IMAGE_TAG}
+                    docker image rm ${APP_NAME}-frontend:${IMAGE_TAG}
                     exit 0
                     """.trim()
                 )
