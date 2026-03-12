@@ -2,7 +2,7 @@ def runCommand(String unixCommand, String windowsCommand = null) {
     if (isUnix()) {
         sh unixCommand
     } else {
-        bat(windowsCommand ?: unixCommand)
+        bat "set DOCKER_HOST=&& ${windowsCommand ?: unixCommand}"
     }
 }
 
@@ -14,8 +14,12 @@ pipeline {
         disableConcurrentBuilds()
         timestamps()
     }
+    tools {
+        maven 'Maven'
+    }
 
     environment {
+        AWS_ACCOUNT_ID = "${env.AWS_ACCOUNT_ID ?: '822972071028'}"
         APP_NAME = 'Rev-Password-Manager'
         AWS_REGION = "${env.AWS_REGION ?: 'ap-south-2'}"
         ECR_BACKEND_REPOSITORY = "${env.ECR_BACKEND_REPOSITORY ?: 'password-manager-phase1-backend'}"
