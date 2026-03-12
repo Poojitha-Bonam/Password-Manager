@@ -89,7 +89,7 @@ pipeline {
 
         stage('Push Images To ECR') {
             when {
-                expression { return env.GIT_BRANCH?.endsWith('main') }
+                expression { return env.GIT_BRANCH?.contains('main') }
             }
             steps {
                 script {
@@ -118,7 +118,7 @@ pipeline {
 
         stage('Deploy To EC2') {
             when {
-                expression { return env.GIT_BRANCH?.endsWith('main') && env.AWS_ACCOUNT_ID?.trim() }
+                expression { return env.GIT_BRANCH?.contains('main') && env.AWS_ACCOUNT_ID?.trim() }
             }
             steps {
                 script {
