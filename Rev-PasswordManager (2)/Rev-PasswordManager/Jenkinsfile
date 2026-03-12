@@ -20,7 +20,7 @@ pipeline {
 
     environment {
         AWS_ACCOUNT_ID = "${env.AWS_ACCOUNT_ID ?: '822972071028'}"
-        APP_NAME = 'Rev-Password-Manager'
+        APP_NAME = 'rev-password-manager'
         AWS_REGION = "${env.AWS_REGION ?: 'ap-south-2'}"
         ECR_BACKEND_REPOSITORY = "${env.ECR_BACKEND_REPOSITORY ?: 'password-manager-phase1-backend'}"
         ECR_FRONTEND_REPOSITORY = "${env.ECR_FRONTEND_REPOSITORY ?: 'password-manager-phase1-frontend'}"
