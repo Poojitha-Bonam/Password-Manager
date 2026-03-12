@@ -129,17 +129,19 @@ pipeline {
                             "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
                             "docker pull ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest",
                             "docker pull ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest",
-                            "docker stop backend frontend 2>/dev/null || true",
-                            "docker rm backend frontend 2>/dev/null || true",
+                            "docker stop backend frontend db 2>/dev/null || true",
+                            "docker rm backend frontend db 2>/dev/null || true",
                             "docker network create rev-net 2>/dev/null || true",
-                            "docker run -d --name db --network rev-net -e MYSQL_DATABASE=rev_password_manager -e MYSQL_USER=admin -e MYSQL_PASSWORD=admin -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 --restart unless-stopped mysql:8.0 2>/dev/null || true",
-                            "sleep 15",
+                            "docker run -d --name db --network rev-net -e MYSQL_DATABASE=rev_password_manager -e MYSQL_USER=admin -e MYSQL_PASSWORD=admin -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 --restart unless-stopped mysql:8.0",
+                            "sleep 20",
                             "docker run -d --name backend --network rev-net -e SPRING_PROFILES_ACTIVE=docker -e SPRING_DATASOURCE_URL='jdbc:mysql://db:3306/rev_password_manager?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true' -e SPRING_DATASOURCE_USERNAME=admin -e SPRING_DATASOURCE_PASSWORD=admin -e CORS_ALLOWED_ORIGINS=http://16.112.157.221 -e SPRING_MAIL_HOST=smtp.gmail.com -e SPRING_MAIL_PORT=587 -e SPRING_MAIL_USERNAME=poojithabonam@gmail.com -e SPRING_MAIL_PASSWORD='aecc ccyo vnmo rnsj' -e JWT_SECRET='49ruIGq3wMbgVOzDyfdATPmaZotBcsYWXS61k7nxv8lNj2J0CFeiUpRQKHLE5h=' -p 8080:8080 -p 8082:8082 --restart unless-stopped ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest",
-                            "sleep 10",
+                            "sleep 15",
                             "docker run -d --name frontend --network rev-net -p 80:80 --restart unless-stopped ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest",
                             "docker ps"
                         ]
-                        def ssmJson = groovy.json.JsonOutput.toJson([Parameters: [commands: ssmCommands]])
+                        // executionTimeout gives the script 600 seconds (10 min) to complete on EC2
+                        // Without this, AWS-RunShellScript defaults to 50 seconds which causes Timed Out
+                        def ssmJson = groovy.json.JsonOutput.toJson([Parameters: [commands: ssmCommands, executionTimeout: ["600"]]])
                         writeFile(file: 'ssm-input.json', text: ssmJson)
                         runCommand("aws ssm send-command --region ${AWS_REGION} --instance-ids ${instanceId} --document-name \"AWS-RunShellScript\" --cli-input-json file://ssm-input.json --output text")
                     }
